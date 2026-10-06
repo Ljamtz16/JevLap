@@ -1,0 +1,12 @@
+[Unit]
+Description=Jev Lab independent interface
+After=network-online.target
+[Service]
+User=ljamtz
+WorkingDirectory=/home/ljamtz/jev-lab
+EnvironmentFile=/home/ljamtz/.config/jev-lab/credentials.env
+ExecStart=/usr/bin/python3 /home/ljamtz/jev-lab/server.py
+Restart=on-failure
+NoNewPrivileges=true
+[Install]
+WantedBy=multi-user.target

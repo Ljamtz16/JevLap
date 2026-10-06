@@ -1,0 +1,1 @@
+{"snapshot":{"timestamp":"2026-10-06T10:00:00-04:00","symbol":"SPY","features":{"return_5m":0.0018,"return_15m":0.0041,"relative_volume":1.37,"vwap_distance":0.0022,"regime":"trend"},"contracts":[{"symbol":"SPY261009C00690000","side":"CALL","bid":1.40,"ask":1.43,"volume":250,"timestamp":"2026-10-06T10:00:00-04:00"}]},"baseline":"CALL"}
