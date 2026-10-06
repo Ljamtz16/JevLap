@@ -17,6 +17,16 @@ class Handler(BaseHTTPRequestHandler):
         body=json.dumps(value, allow_nan=False).encode()
         self.send_response(code); self.send_header('Content-Type','application/json'); self.end_headers(); self.wfile.write(body)
     def do_GET(self):
+        if self.path=='/api/paper':
+            status_path=ROOT/'data/paper-status.json'
+            status=json.loads(status_path.read_text(encoding='utf-8')) if status_path.exists() else {'enabled':False,'status':'NOT_STARTED'}
+            history=[]
+            paper_db=ROOT/'data/paper.sqlite'
+            if paper_db.exists():
+                with sqlite3.connect(paper_db,timeout=20) as db:
+                    for cid,body,broker,state,created in db.execute('SELECT * FROM intents ORDER BY created DESC LIMIT 100'):
+                        history.append(dict(client_order_id=cid,request=json.loads(body),broker=None if not broker else json.loads(broker),state=state,created_at=created))
+            return self.send(dict(status=status,orders=history))
         if self.path=='/api/results':
             with sqlite3.connect(DB) as db:
                 rows=[json.loads(r[0]) for r in db.execute('SELECT body FROM decisions ORDER BY rowid DESC')]

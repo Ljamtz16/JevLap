@@ -54,7 +54,7 @@ Homepage input price: US$42 per billion input tokens, equivalent to US$0.042 per
 
 ## Git / VPS snapshot consumer
 
-Published as the independent repository https://github.com/Ljamtz16/JevLap. Production Options-System remains separate.
+Published independently at https://github.com/Ljamtz16/JevLap. Options-System remains unchanged.
 
 Use a separate checkout, not the production options-system folder:
 
@@ -68,3 +68,32 @@ python3 watch_snapshots.py --source ~/options-system/data/raw/intraday --once
 Set credentials in a private environment file outside the repository, e.g. ~/.config/jev-lab/credentials.env with permissions 600. Windows DPAPI credentials cannot be copied to Linux. Use TYPESAFE_API_KEY, ALPACA_PAPER_API_KEY and ALPACA_PAPER_SECRET_KEY. The two sample systemd units load that file. Install units only after checking paths and confirming the actual VPS snapshot schema.
 
 The worker verifies the immutable-envelope checksum, consumes completed JSON only, deduplicates decisions, accumulates option quotes and updates research outcomes. Old files contribute quotes but never trigger retrospective Jev requests. Fresh files (maximum age 120 seconds) can incur Jev API charges. Broker remains disabled. Shadow research entry is the observed snapshot ask, not a broker fill; inference latency means this is not an executable fill assumption. Baseline comparisons remain unset until a verified signal-file adapter exists. The adapter targets the checked-in collector schema, not yet a verified VPS sample. Missing option volume or stale quotes reject an entry.
+
+## Alpaca Paper executor v0.1
+
+`paper_executor.py` uses a hardcoded https://paper-api.alpaca.markets endpoint. No live endpoint is configurable. It is disabled unless `JEV_PAPER_ENABLED=true`. Account identity must match `JEV_PAPER_ACCOUNT_ID` on every loop. `configure_paper.py` verifies the account is empty, pins its ID in the external credentials file on Linux and explicitly leaves orders disabled.
+
+Controls: one open position across the dedicated account; one standard 100-share option contract; 75% confidence; maximum US$200 premium; maximum 3 entry attempts per New York session; new entries halted for the rest of the session after US$50 equity drawdown; no entries in the final 15 minutes; no expiration-day contracts. These are experimental fixed limits for v0.1. The US$50 equity drawdown is a circuit breaker, not a guaranteed maximum loss. Keep the account exclusive to this executor.
+
+Entries use a newly fetched bid/ask, maximum quote age 30 seconds and maximum relative spread 15%, with a buy LIMIT rounded conservatively to 5/10-cent increments. Exits use actual confirmed fill price: +20% TP, -10% SL, maximum 60-minute hold, and closing attempts 10 minutes before the broker's next session close. Exits are LIMIT sells with sell_to_close; persistent quotes/venue/API failures or unfilled limits can leave a position open. No unconditional guaranteed close is claimed. Stale quotes halt action instead of fabricating a fill. Default quote feed is OPRA; permissions may require a subscription. Indicative feed is optional via JEV_OPTIONS_FEED=indicative, but those prices are modified and must be evaluated separately.
+
+Order intent is committed before network submission. Every intent gets a stable client_order_id. A timeout or crash leaves an uncertain intent which is reconciled by ID; it is never blindly resubmitted. Unresolved intents block new entries and require manual investigation if Alpaca cannot find them. Old pending entries are canceled after 60 seconds; cancellation must be acknowledged before a new entry. Exit cancellation/repricing likewise waits for acknowledgement. One executor process is enforced through an OS file lock.
+
+`data/paper-status.json` is written atomically. The UI reads it and a separate paper.sqlite order ledger; broker fills, equity and gross realized/unrealized P&L remain distinct from research simulations. Dashboard refreshes every 15 seconds while real records are selected. Gross P&L excludes fees; equity reflects broker accounting. Do not treat test success as a verified broker execution lifecycle: no actual orders were sent during development.
+
+VPS setup, read-only initially:
+
+```bash
+cd ~/jev-lab
+git pull --ff-only
+python3 -m unittest discover -s tests -v
+python3 configure_paper.py
+sudo install -m 644 deploy/jev-lab-paper.service /etc/systemd/system/jev-lab-paper.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now jev-lab-paper.service
+sudo systemctl restart jev-lab.service
+curl --fail http://127.0.0.1:8787/api/paper
+sudo journalctl -u jev-lab-paper.service -n 30 --no-pager
+```
+
+The account remains read-only until a separate activation step. Before activation, verify a fresh contract quote with the selected data feed and broker option-contract permissions. Stop accepting entries during an API incident; disabling JEV_PAPER_ENABLED disables ALL mutations, including closes, so do not turn it off with an open position unless taking over its management manually. TP/SL are client-managed, not server-held brackets.

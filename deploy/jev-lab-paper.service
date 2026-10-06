@@ -1,0 +1,13 @@
+[Unit]
+Description=Jev Lab Alpaca Paper executor
+After=network-online.target jev-lab-worker.service
+[Service]
+User=ljamtz
+WorkingDirectory=/home/ljamtz/jev-lab
+EnvironmentFile=/home/ljamtz/.config/jev-lab/credentials.env
+ExecStart=/usr/bin/python3 /home/ljamtz/jev-lab/paper_executor.py
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+[Install]
+WantedBy=multi-user.target
