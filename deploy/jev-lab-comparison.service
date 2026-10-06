@@ -1,0 +1,13 @@
+[Unit]
+Description=Jev Lab comparison with frozen Options-System research hypotheses
+After=jev-lab-worker.service
+[Service]
+User=ljamtz
+WorkingDirectory=/home/ljamtz/jev-lab
+ExecStart=/usr/bin/python3 /home/ljamtz/jev-lab/compare_system.py --system-root /home/ljamtz/options-system
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ReadOnlyPaths=/home/ljamtz/options-system
+[Install]
+WantedBy=multi-user.target

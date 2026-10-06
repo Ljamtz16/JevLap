@@ -1,0 +1,95 @@
+{
+  "version": "v0.2",
+  "frozen_at": "2026-10-02",
+  "status": "PROSPECTIVE_RESEARCH_ONLY",
+  "notes": [
+    "V02 preserves H01 and H02 from V01 unchanged.",
+    "H03 was promoted from exploratory candidate to frozen prospective hypothesis before new VPS collection.",
+    "The 2026-10-02 session remains discovery/diagnostic only and is excluded from prospective evidence."
+  ],
+  "hypotheses": [
+    {
+      "id": "CALL_FLOW_REVERSAL_V01",
+      "symbol_scope": [
+        "SPY"
+      ],
+      "side": "call",
+      "horizon_min": 60,
+      "rules": {
+        "d_atm_iv_prev_gt": 0.0,
+        "d_put_call_iv_skew_prev_lt": 0.0,
+        "d_put_call_volume_ratio_1pct_prev_gt": 0.0
+      },
+      "success_metrics": [
+        "mean_return",
+        "gt10_rate",
+        "ltm10_rate",
+        "tp10_before_sl10"
+      ]
+    },
+    {
+      "id": "PUT_SKEW_SHORT_V01",
+      "symbol_scope": [
+        "SPY"
+      ],
+      "side": "put",
+      "horizon_min": 15,
+      "rules": {
+        "put_call_iv_skew_gt": 0.0045,
+        "put_call_volume_ratio_1pct_lt": 1.05
+      },
+      "success_metrics": [
+        "mean_return",
+        "gt10_rate",
+        "ltm10_rate",
+        "tp10_before_sl10"
+      ]
+    },
+    {
+      "id": "H03_CALL_RELATIVE_WEAKNESS_REVERSAL_V01",
+      "source_candidate": "H03_CALL_RELATIVE_WEAKNESS_REVERSAL_CANDIDATE",
+      "symbol_scope": [
+        "SPY"
+      ],
+      "side": "call",
+      "horizon_min": 60,
+      "frozen_from": "EXPLORATORY_HYPOTHESIS_CANDIDATES_V02.json",
+      "discovery_session": "2026-10-02",
+      "prospective_start_after": "2026-10-02",
+      "rules": [
+        {
+          "feature": "iwm_from_open",
+          "op": "<=",
+          "value": -0.003338055604745982
+        },
+        {
+          "feature": "spy_from_open",
+          "op": "<=",
+          "value": -0.002140966419266088
+        }
+      ],
+      "episode_policy": {
+        "gap_minutes": 6,
+        "entry": "first_activation_per_episode",
+        "max_contracts_per_episode": 1,
+        "entry_price": "ask",
+        "exit_price": "bid",
+        "tp": 0.1,
+        "sl": -0.1
+      },
+      "success_metrics": [
+        "mean_return",
+        "gt10_rate",
+        "ltm10_rate",
+        "tp10_before_sl10",
+        "episode_tp10_before_sl10",
+        "net_pnl_after_estimated_costs"
+      ],
+      "research_controls": {
+        "discovery_results_are_diagnostic_only": true,
+        "no_parameter_tuning_after_freeze": true,
+        "evaluate_by_independent_days_and_episodes": true
+      }
+    }
+  ]
+}

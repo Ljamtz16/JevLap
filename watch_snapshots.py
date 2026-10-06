@@ -43,7 +43,7 @@ def run(source,once=False):
                     decision={k:old[k] for k in ('side','confidence','probability','model','request','raw')}
                     new=evaluate(old['snapshot'],decision,observed,old['baseline'],old['config'])
                     for k in ('snapshot','decision_received_at','source_file','research_mode'):new[k]=old[k]
-                    db.execute('UPDATE decisions SET body=? WHERE id=?',(json.dumps(new),ident))
+                    db.execute("UPDATE decisions SET body=json_set(json(?),'$.comparison',json_extract(body,'$.comparison'),'$.baseline',json_extract(body,'$.baseline'),'$.agreement',json_extract(body,'$.agreement')) WHERE id=?",(json.dumps(new),ident))
                 db.execute('INSERT INTO consumed VALUES(?)',(str(path),))
             print('Consumed:',path.name,flush=True)
         if once:return

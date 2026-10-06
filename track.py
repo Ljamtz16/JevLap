@@ -13,6 +13,6 @@ if __name__ == '__main__':
             decision={k:old[k] for k in ('side','confidence','probability','model','request','raw')}
             new=evaluate(old['snapshot'],decision,quotes,old['baseline'],old['config'])
             new['snapshot']=old['snapshot']
-            db.execute('UPDATE decisions SET body=? WHERE id=?',(json.dumps(new),ident))
+            db.execute("UPDATE decisions SET body=json_set(json(?),'$.comparison',json_extract(body,'$.comparison'),'$.baseline',json_extract(body,'$.baseline'),'$.agreement',json_extract(body,'$.agreement')) WHERE id=?",(json.dumps(new),ident))
             count+=1
     print(f'Evaluated {count} frozen decisions. No API requests or broker orders.')

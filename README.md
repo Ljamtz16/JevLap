@@ -97,3 +97,24 @@ sudo journalctl -u jev-lab-paper.service -n 30 --no-pager
 ```
 
 The account remains read-only until a separate activation step. Before activation, verify a fresh contract quote with the selected data feed and broker option-contract permissions. Stop accepting entries during an API incident; disabling JEV_PAPER_ENABLED disables ALL mutations, including closes, so do not turn it off with an open position unless taking over its management manually. TP/SL are client-managed, not server-held brackets.
+
+### Independent comparison with Options-System
+
+`compare_system.py` reads immutable intraday snapshots and the existing frozen V02 hypothesis definitions plus their pure feature/rule functions from `~/options-system`. It does not request Jev responses, fetch market data, modify Options-System, or send orders. Jev only receives its original allowlisted market state.
+
+The main comparator is **research hypotheses at 60 minutes (SPY only)**, not the original system's execution/risk gate. Active H01/H03 hypotheses give CALL/PUT; NO_TRADE requires evaluable inactive rules. Missing inputs, out-of-scope symbols, pre-freeze sessions and contradictory active sides remain unmatched. H02's 15-minute hypothesis is evaluated separately with TP/SL 10%. H01 deltas use the immediately preceding intraday snapshot from the same session, which can differ from the original prospective collector cadence; this adapter and its feature source are a separate research protocol.
+
+Each signal retains the snapshot checksum, exact timestamp/symbol, source filename and SHA-256 of the frozen policy and functions. Existing signals remain frozen if those files change. Run a separate versioned experiment before comparing changed policies. A signal computed within 120 seconds of capture is marked PROSPECTIVE; older replay is RECONSTRUCTED and excluded from comparison scores by default. Reconstructed results are diagnostic, not new prospective evidence.
+
+Both main simulations use Jev Lab's common contract selector, one contract, ask entry/bid exit, TP +20%, SL -10%, 60-minute horizon. Jev retains confidence >=75%; deterministic hypothesis activation is not an estimated confidence. Same-direction candidates use the same selector and therefore the same contract. Counts and gross P&L are independent hypothetical entries per snapshot: repeated activations can overlap and cannot be treated as portfolio returns. This layer does not reproduce the original system's episode/risk/cost policies or broker fills.
+
+Install on the VPS after pulling and running tests:
+
+```bash
+sudo install -m 644 deploy/jev-lab-comparison.service /etc/systemd/system/jev-lab-comparison.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now jev-lab-comparison.service
+sudo systemctl restart jev-lab-worker.service jev-lab.service
+```
+
+Only the comparison service and research consumer need these changes. Alpaca PAPER configuration and executor are unchanged. Inspect `sudo journalctl -u jev-lab-comparison.service -n 20 --no-pager`. The comparison tab displays the most recent session by default and allows historical reconstructions explicitly.
