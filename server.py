@@ -1,4 +1,6 @@
+from contextlib import closing
 import json, os, sqlite3
+from urllib.parse import urlsplit, parse_qs
 from pathlib import Path
 from http.server import ThreadingHTTPServer as HTTPServer, BaseHTTPRequestHandler
 from engine import decide, evaluate
@@ -9,7 +11,7 @@ load_credentials()
 ROOT=Path(__file__).resolve().parent
 DB=ROOT/'data'/'lab.sqlite'
 DB.parent.mkdir(exist_ok=True)
-with sqlite3.connect(DB) as db:
+with closing(sqlite3.connect(DB)) as db, db:
     db.execute('CREATE TABLE IF NOT EXISTS decisions(id TEXT PRIMARY KEY, body TEXT NOT NULL)')
 
 class Handler(BaseHTTPRequestHandler):
@@ -24,13 +26,19 @@ class Handler(BaseHTTPRequestHandler):
             history=[]
             paper_db=ROOT/'data/paper.sqlite'
             if paper_db.exists():
-                with sqlite3.connect(paper_db,timeout=20) as db:
+                with closing(sqlite3.connect(paper_db,timeout=20)) as db, db:
                     for cid,body,broker,state,created in db.execute('SELECT * FROM intents ORDER BY created DESC LIMIT 100'):
                         history.append(dict(client_order_id=cid,request=json.loads(body),broker=None if not broker else json.loads(broker),state=state,created_at=created))
             return self.send(dict(status=status,orders=history))
+        if urlsplit(self.path).path=='/api/decision':
+            ident=parse_qs(urlsplit(self.path).query).get('id',[''])[0]
+            with closing(sqlite3.connect(DB,timeout=20)) as db, db:
+                row=db.execute('SELECT body FROM decisions WHERE id=?',(ident,)).fetchone()
+            return self.send(json.loads(row[0]) if row else {'error':'Decision not found'},200 if row else 404)
         if self.path=='/api/results':
-            with sqlite3.connect(DB) as db:
-                rows=[json.loads(r[0]) for r in db.execute('SELECT body FROM decisions ORDER BY rowid DESC')]
+            with closing(sqlite3.connect(DB,timeout=20)) as db, db:
+                # Full inputs and provider responses remain available on demand.
+                rows=[json.loads(r[0]) for r in db.execute("SELECT json_remove(body,'$.snapshot','$.request','$.raw') FROM decisions ORDER BY rowid DESC")]
             return self.send(dict(rows=rows, jev_configured=bool(os.getenv('TYPESAFE_API_KEY')),broker_mode='PAPER', trading_threshold=.75))
         if self.path in ('/','/index.html'):
             self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('Cache-Control','no-store'); self.end_headers(); self.wfile.write((ROOT/'web/index.html').read_bytes()); return
@@ -49,13 +57,13 @@ class Handler(BaseHTTPRequestHandler):
                 # A persisted decision is immutable; replay only updates observations.
                 from hashlib import sha256
                 ident=sha256((snapshot['timestamp']+snapshot['symbol']).encode()).hexdigest()[:20]
-                with sqlite3.connect(DB) as db:
+                with closing(sqlite3.connect(DB)) as db, db:
                     old=db.execute('SELECT body FROM decisions WHERE id=?',(ident,)).fetchone()
                     if old: return self.send(json.loads(old[0]))
                 decision=decide(snapshot)
                 row=evaluate(snapshot,decision,[],body.get('baseline'))
                 row['snapshot']=snapshot
-                with sqlite3.connect(DB) as db:
+                with closing(sqlite3.connect(DB)) as db, db:
                     db.execute('INSERT INTO decisions VALUES(?,?)',(row['id'],json.dumps(row)))
                 return self.send(row)
             raise ValueError('Ruta desconocida')
