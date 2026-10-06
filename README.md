@@ -54,13 +54,12 @@ Homepage input price: US$42 per billion input tokens, equivalent to US$0.042 per
 
 ## Git / VPS snapshot consumer
 
-GitHub upload is pending; the integration rejected branch creation with HTTP 403. The local independent Git repository is prepared. Deployment instructions below describe the planned branch layout, not an existing published branch.
+Published as the independent repository https://github.com/Ljamtz16/JevLap. Production Options-System remains separate.
 
 Use a separate checkout, not the production options-system folder:
 
 ```bash
-git clone --branch feature/jev-lab-v01 --single-branch https://github.com/Ljamtz16/Options-System.git ~/jev-lab-source
-cp -a ~/jev-lab-source/jev_lab ~/jev-lab
+git clone https://github.com/Ljamtz16/JevLap.git ~/jev-lab
 cd ~/jev-lab
 python3 -m unittest discover -s tests -v
 python3 watch_snapshots.py --source ~/options-system/data/raw/intraday --once
