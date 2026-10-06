@@ -53,5 +53,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send({'error': str(exc) if isinstance(exc,ValueError) else type(exc).__name__+': solicitud fallida'},400)
 
 if __name__=='__main__':
-    print('Jev Lab: http://127.0.0.1:8787 — broker desactivado',flush=True)
-    HTTPServer(('127.0.0.1',int(os.getenv('PORT','8787'))),Handler).serve_forever()
+    import ipaddress, threading
+    port=int(os.getenv('PORT','8787'))
+    tail_ip=os.getenv('JEV_TAILSCALE_IP','').strip()
+    if tail_ip:
+        address=ipaddress.ip_address(tail_ip)
+        if address not in ipaddress.ip_network('100.64.0.0/10'):
+            raise ValueError('JEV_TAILSCALE_IP must be a Tailscale IPv4 address')
+        private_server=HTTPServer((tail_ip,port),Handler)
+        threading.Thread(target=private_server.serve_forever,daemon=True).start()
+        print(f'Jev Lab Tailscale: http://{tail_ip}:{port}',flush=True)
+    print(f'Jev Lab local: http://127.0.0.1:{port} — broker desactivado',flush=True)
+    HTTPServer(('127.0.0.1',port),Handler).serve_forever()
