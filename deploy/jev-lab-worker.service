@@ -5,9 +5,9 @@ After=network-online.target
 User=ljamtz
 WorkingDirectory=/home/ljamtz/jev-lab
 EnvironmentFile=/home/ljamtz/.config/jev-lab/credentials.env
-ExecStart=/usr/bin/python3 /home/ljamtz/jev-lab/watch_snapshots.py --source /home/ljamtz/options-system/data/raw/intraday
+ExecStart=/usr/bin/python3 /home/ljamtz/jev-lab/watch_snapshots.py --source /home/ljamtz/options-system/data/raw/intraday --canonical-source /home/ljamtz/options-system/data/raw/prospective
 Restart=on-failure
 NoNewPrivileges=true
-ReadOnlyPaths=/home/ljamtz/options-system/data/raw/intraday
+ReadOnlyPaths=/home/ljamtz/options-system/data/raw
 [Install]
 WantedBy=multi-user.target

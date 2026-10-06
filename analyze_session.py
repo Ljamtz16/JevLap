@@ -100,7 +100,7 @@ def jev_report(rows):
                 events.append({**(comp.get('system_simulation') or {}), 'timestamp':r['timestamp'], 'symbol':r['symbol'], 'hypothesis':h['id']})
                 events[-1]['timestamp']=r['timestamp'];events[-1]['symbol']=r['symbol']
             for aux in comp.get('auxiliary_15m',[]):
-                events.append(dict(aux,timestamp=r['timestamp'],symbol=r['symbol'],contract='not_exported' if aux['status'] in ('OPEN','CLOSED') else None))
+                events.append(dict(aux,timestamp=r['timestamp'],symbol=r['symbol'],contract=aux.get('contract') or ('not_exported' if aux['status'] in ('OPEN','CLOSED') else None)))
         grouped={}
         for name in sorted({e['hypothesis'] for e in events}):
             hits=[e for e in events if e['hypothesis']==name]

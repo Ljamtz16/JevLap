@@ -9,7 +9,8 @@ from pathlib import Path
 import sqlite3
 import time
 from engine import evaluate
-from snapshot_adapter import adapt
+from snapshot_adapter import adapt, intraday_view
+from source_snapshots import snapshot_paths, allowed_symbols, COMMON_START_DATE
 
 ROOT = Path(__file__).resolve().parent
 FIELDS = ('baseline', 'agreement', 'comparison')
@@ -39,7 +40,8 @@ class Comparator:
     def signal(self, envelope, symbol, previous=None, now=None):
         now = now or datetime.now(timezone.utc)
         ts = envelope['captured_at_utc']
-        md = envelope['payload']['market_date']
+        payload = intraday_view(envelope['payload'])
+        md = payload['market_date']
         eligible = [h for h in self.hypotheses if symbol in h.get('symbol_scope', [])]
         out = dict(timestamp=ts, symbol=symbol, market_date=md, snapshot_sha256=envelope['sha256'],
                    policy_sha256=self.version, evaluated_at=now.isoformat(),
@@ -49,7 +51,7 @@ class Comparator:
         if not eligible: return out
         if date.fromisoformat(md) <= date.fromisoformat(self.meta['frozen_at']):
             out['status'] = 'PRE_FREEZE'; return out
-        rec = envelope['payload']['symbols'][symbol]
+        rec = payload['symbols'][symbol]
         captured = datetime.fromisoformat(ts)
         chain = {'snapshots': {}}
         for name, option in (rec.get('option_snapshot') or {}).get('snapshots', {}).items():
@@ -61,7 +63,7 @@ class Comparator:
                     item.pop(field, None)
             chain['snapshots'][name] = item
         features = self.chain(chain, float(rec['spot']), date.fromisoformat(md))
-        context = (envelope['payload'].get('global_context') or {}).get('cross_market') or {}
+        context = (payload.get('global_context') or {}).get('cross_market') or {}
         for key in ('spy_from_open', 'iwm_from_open', 'qqq_from_open'):
             features[key] = context.get(key)
         if previous and previous.get('market_date') == md and datetime.fromisoformat(previous['timestamp']) < captured:
@@ -88,10 +90,10 @@ class Comparator:
         out['missing_hypotheses'] = missing
         return out
 
-    def scan(self, source):
+    def scan(self, source, canonical_source=None, start_date=COMMON_START_DATE):
         previous = {}
         with closing(sqlite3.connect(self.db_path, timeout=30)) as db, db:
-            for path in sorted(Path(source).glob('intraday_options_*.json')):
+            for path, source_kind in snapshot_paths(source, canonical_source):
                 if path in self.cache:
                     for signal in self.cache[path]: previous[signal['symbol']] = signal
                     continue
@@ -99,6 +101,8 @@ class Comparator:
                     envelope = json.loads(path.read_text(encoding='utf-8'))
                     cached = []
                     states, _, _ = adapt(envelope)  # validate checksum and capture time
+                    permitted=allowed_symbols(envelope,source_kind,start_date)
+                    states=[state for state in states if state['symbol'] in permitted]
                     for state in states:
                         symbol, ts = state['symbol'], state['timestamp']
                         found = db.execute('SELECT body FROM comparison_signals WHERE timestamp=? AND symbol=?', (ts, symbol)).fetchone()
@@ -107,6 +111,7 @@ class Comparator:
                         else:
                             signal = self.signal(envelope, symbol, previous.get(symbol))
                             signal['source_file'] = path.name
+                            signal['dataset_policy'] = source_kind
                             db.execute('INSERT INTO comparison_signals VALUES(?,?,?)', (ts, symbol, json.dumps(signal)))
                         previous[symbol] = signal
                         cached.append(signal)
@@ -128,12 +133,14 @@ class Comparator:
                 if (row.get('comparison') or {}).get('signal', {}).get('snapshot_sha256') not in (None, signal['snapshot_sha256']):
                     continue
                 if row.get('source_file') != signal.get('source_file'): continue
+                if snapshot.get('snapshot_sha256') not in (None,signal['snapshot_sha256']): continue
+                if signal.get('dataset_policy')=='SPY_PROSPECTIVE_CANONICAL_V1' and snapshot.get('snapshot_sha256')!=signal['snapshot_sha256']: continue
                 def simulate(decision, config):
                     first = evaluate(snapshot, decision, [], config=config)
                     if not first.get('contract'): return first
                     observed = [dict(symbol=s, timestamp=t, bid=b) for s,t,b in db.execute(
                         'SELECT symbol,timestamp,bid FROM quotes WHERE symbol=? ORDER BY timestamp', (first['contract'],))]
-                    return evaluate(snapshot, decision, observed, config=config)
+                    return evaluate(snapshot, decision, observed, config=config,as_of=datetime.now(timezone.utc))
                 baseline = signal['side'] if signal['status'] == 'READY' else None
                 sim = None
                 if baseline is not None:
@@ -152,7 +159,7 @@ class Comparator:
                 for h in signal['auxiliary_15m']:
                     result = simulate(dict(side=h['side'], confidence=1, probability=None, model=h['id']),
                                       dict(row['config'], max_hold=15, tp=.10, sl=-.10))
-                    aux.append(dict(hypothesis=h['id'], horizon_min=15, status=result['status'], pnl=result['pnl'], reason=result['reason']))
+                    aux.append(dict(result,hypothesis=h['id'],horizon_min=15))
                 comparison = dict(signal=signal, group=group, jev_effective_side=jev_side, system_simulation=sim, auxiliary_15m=aux)
                 agreement = None if baseline is None else baseline == jev_side
                 if row.get('comparison') == comparison and row.get('baseline') == baseline and row.get('agreement') == agreement:
@@ -167,10 +174,12 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('--system-root', type=Path, default=Path.home()/'options-system')
     p.add_argument('--once', action='store_true')
+    p.add_argument('--canonical-source',type=Path)
+    p.add_argument('--common-start-date',default=COMMON_START_DATE)
     a = p.parse_args()
     comp = Comparator(a.system_root)
     while True:
-        comp.scan(a.system_root/'data/raw/intraday')
+        comp.scan(a.system_root/'data/raw/intraday',a.canonical_source,a.common_start_date)
         print('Comparison rows:', comp.update(), flush=True)
         if a.once: break
         time.sleep(20)
