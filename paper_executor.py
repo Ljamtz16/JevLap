@@ -156,7 +156,7 @@ class Executor:
             if (ask-bid)/ask>.15:continue
             limit=price(ask,True);cost=float(limit)*100
             bp=float(account.get('options_buying_power') or 0)
-            if cost>200 or cost>bp or cost<=0:continue
+            if cost>bp or cost<=0:continue
             self.submit(cid,dict(symbol=symbol,qty='1',side='buy',position_intent='buy_to_open',type='limit',limit_price=limit,time_in_force='day',client_order_id=cid))
             break
 

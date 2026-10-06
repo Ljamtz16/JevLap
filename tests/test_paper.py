@@ -52,8 +52,12 @@ class PaperTests(unittest.TestCase):
   self.api.positions=[{'symbol':self.row['contract'],'asset_class':'us_option','qty':'1'}]
   self.api.orders=[{'symbol':self.row['contract'],'client_order_id':'jv-exit-abcdefgh-0','status':'new','created_at':now().isoformat(),'id':'exit-id'}]
   self.exe.tick([]);self.assertEqual(self.posts(),[])
- def test_cost_cap(self):
+ def test_premium_above_200_allowed_for_one_contract(self):
   self.api.quote=lambda s:{'bp':2.9,'ap':3,'t':now().isoformat()}
+  self.exe.tick([self.row]);self.assertEqual(len(self.posts()),1)
+  self.assertEqual(self.posts()[0][2]['qty'],'1');self.assertEqual(float(self.posts()[0][2]['limit_price']),3.0)
+ def test_insufficient_buying_power_blocks_entry(self):
+  self.api.quote=lambda s:{'bp':10.9,'ap':11,'t':now().isoformat()}
   self.exe.tick([self.row]);self.assertEqual(self.posts(),[])
  def test_stale_quote_blocks_order(self):
   self.api.quote=lambda s:(_ for _ in ()).throw(ValueError('Stale quote'))
