@@ -118,3 +118,9 @@ sudo systemctl restart jev-lab-worker.service jev-lab.service
 ```
 
 Only the comparison service and research consumer need these changes. Alpaca PAPER configuration and executor are unchanged. Inspect `sudo journalctl -u jev-lab-comparison.service -n 20 --no-pager`. The comparison tab displays the most recent session by default and allows historical reconstructions explicitly.
+
+### Saved-data session analysis
+
+`python3 analyze_session.py --date 2026-10-06 --system-root ~/options-system` exports a timestamped session ZIP under `data/reports/`. It uses read-only SQLite connections and saved research files; it does not load credentials or call provider/broker APIs. The ZIP includes compact Jev decisions, saved PAPER order fields, current-session Options-System CSV rows, research artifacts, a JSON summary and Markdown report. No complete databases, credentials or Jev request/provider audit payloads are exported.
+
+New York session dates, prospective vs reconstructed comparisons, missing outcomes and missing/stale post-close sources are explicit. Gross P&L of overlapping snapshot simulations remains distinct from saved broker fill P&L. First-activation grouping with gaps above 6 minutes is diagnostic only and does not implement the original capital or episode policies. Missing broker history for the original Options-System is not reported as zero trades. Refresh the original system's post-close artifacts using its normal pipeline, then rerun the export if those sources are not yet current.

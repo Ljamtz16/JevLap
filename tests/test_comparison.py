@@ -43,7 +43,7 @@ class ComparisonTests(unittest.TestCase):
     def test_join_threshold_outcomes_and_provider_preserved(self):
         state=adapt(self.envelope)[0][0]
         decision=dict(side='PUT',confidence=.3,probability=.6,model='jev',request={'state':{}},raw={'provider':True})
-        row=evaluate(state,decision,[]);row.update(snapshot=state,source_file='sample.json')
+        row=evaluate(state,decision,[]);row.update(snapshot=state,source_file='sample.json',comparison=None)
         signal=self.signal();signal['source_file']='sample.json'
         with closing(sqlite3.connect(self.c.db_path)) as db,db:
             db.execute('CREATE TABLE decisions(id TEXT PRIMARY KEY,body TEXT)')

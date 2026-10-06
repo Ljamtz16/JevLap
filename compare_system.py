@@ -121,11 +121,11 @@ class Comparator:
             records = db.execute('SELECT d.id,d.body,s.body FROM decisions d JOIN comparison_signals s ON json_extract(d.body,\'$.timestamp\')=s.timestamp AND json_extract(d.body,\'$.symbol\')=s.symbol').fetchall()
             for ident, body, raw_signal in records:
                 row, signal = json.loads(body), json.loads(raw_signal)
-                if row.get('comparison', {}).get('signal', {}).get('policy_sha256') not in (None, signal['policy_sha256']):
+                if (row.get('comparison') or {}).get('signal', {}).get('policy_sha256') not in (None, signal['policy_sha256']):
                     continue
                 snapshot = row.get('snapshot')
                 if not snapshot: continue
-                if row.get('comparison', {}).get('signal', {}).get('snapshot_sha256') not in (None, signal['snapshot_sha256']):
+                if (row.get('comparison') or {}).get('signal', {}).get('snapshot_sha256') not in (None, signal['snapshot_sha256']):
                     continue
                 if row.get('source_file') != signal.get('source_file'): continue
                 def simulate(decision, config):
