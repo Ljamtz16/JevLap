@@ -15,11 +15,12 @@ with sqlite3.connect(DB) as db:
 class Handler(BaseHTTPRequestHandler):
     def send(self, value, code=200):
         body=json.dumps(value, allow_nan=False).encode()
-        self.send_response(code); self.send_header('Content-Type','application/json'); self.end_headers(); self.wfile.write(body)
+        self.send_response(code); self.send_header('Content-Type','application/json'); self.send_header('Cache-Control','no-store'); self.end_headers(); self.wfile.write(body)
     def do_GET(self):
         if self.path=='/api/paper':
             status_path=ROOT/'data/paper-status.json'
             status=json.loads(status_path.read_text(encoding='utf-8')) if status_path.exists() else {'enabled':False,'status':'NOT_STARTED'}
+            status['quote_feed']=os.getenv('JEV_OPTIONS_FEED','opra')
             history=[]
             paper_db=ROOT/'data/paper.sqlite'
             if paper_db.exists():
@@ -30,9 +31,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=='/api/results':
             with sqlite3.connect(DB) as db:
                 rows=[json.loads(r[0]) for r in db.execute('SELECT body FROM decisions ORDER BY rowid DESC')]
-            return self.send(dict(rows=rows, jev_configured=bool(os.getenv('TYPESAFE_API_KEY')),broker='DISABLED'))
+            return self.send(dict(rows=rows, jev_configured=bool(os.getenv('TYPESAFE_API_KEY')),broker_mode='PAPER', trading_threshold=.75))
         if self.path in ('/','/index.html'):
-            self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8'); self.end_headers(); self.wfile.write((ROOT/'web/index.html').read_bytes()); return
+            self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('Cache-Control','no-store'); self.end_headers(); self.wfile.write((ROOT/'web/index.html').read_bytes()); return
         self.send({'error':'Not found'},404)
     def do_POST(self):
         # Local-only API, no cross-origin writes; keys stay in environment.
@@ -73,5 +74,5 @@ if __name__=='__main__':
         private_server=HTTPServer((tail_ip,port),Handler)
         threading.Thread(target=private_server.serve_forever,daemon=True).start()
         print(f'Jev Lab Tailscale: http://{tail_ip}:{port}',flush=True)
-    print(f'Jev Lab local: http://127.0.0.1:{port} — broker desactivado',flush=True)
+    print(f'Jev Lab local: http://127.0.0.1:{port} — estado del ejecutor en /api/paper',flush=True)
     HTTPServer(('127.0.0.1',port),Handler).serve_forever()
