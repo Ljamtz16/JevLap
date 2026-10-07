@@ -30,6 +30,7 @@ class DashboardAPITests(unittest.TestCase):
             body=response.read();self.assertLess(len(body),2000)
             self.assertEqual(response.headers['Cache-Control'],'no-store')
         result=json.loads(body);row=result['rows'][0]
+        self.assertEqual(result['trading_threshold'],.60)
         self.assertEqual(row['confidence'],.44);self.assertEqual(row['config'],{'threshold':.75})
         self.assertTrue(all(field not in row for field in ('raw','snapshot','request')))
         with self.get('/api/decision?id=test-id') as response:

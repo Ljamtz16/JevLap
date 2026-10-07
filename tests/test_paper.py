@@ -27,6 +27,11 @@ class PaperTests(unittest.TestCase):
  def posts(self):return [c for c in self.api.calls if c[1]=='POST']
  def test_paper_endpoint_fixed(self):self.assertEqual(PaperAPI.trading,'https://paper-api.alpaca.markets')
  def test_disabled_never_sends(self):self.exe.enabled=False;self.exe.tick([self.row]);self.assertEqual(self.posts(),[])
+ def test_sixty_percent_entry_boundary(self):
+  self.row['confidence']=.599
+  self.exe.tick([self.row]);self.assertEqual(self.posts(),[])
+  self.row['confidence']=.60
+  self.exe.tick([self.row]);self.assertEqual(len(self.posts()),1)
  def test_single_entry_idempotent(self):
   self.exe.tick([self.row]);self.exe.tick([self.row]);self.assertEqual(len(self.posts()),1);self.assertEqual(self.posts()[0][2]['position_intent'],'buy_to_open')
  def test_uncertain_submit_never_repeats(self):

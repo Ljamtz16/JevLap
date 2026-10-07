@@ -3,7 +3,7 @@ import json, os, sqlite3
 from urllib.parse import urlsplit, parse_qs
 from pathlib import Path
 from http.server import ThreadingHTTPServer as HTTPServer, BaseHTTPRequestHandler
-from engine import decide, evaluate
+from engine import CONFIG, decide, evaluate
 
 from credentials import load as load_credentials
 load_credentials()
@@ -50,7 +50,7 @@ class Handler(BaseHTTPRequestHandler):
             with closing(sqlite3.connect(DB,timeout=20)) as db, db:
                 # Full inputs and provider responses remain available on demand.
                 rows=[json.loads(r[0]) for r in db.execute("SELECT json_remove(body,'$.snapshot','$.request','$.raw') FROM decisions ORDER BY rowid DESC")]
-            return self.send(dict(rows=rows, jev_configured=bool(os.getenv('TYPESAFE_API_KEY')),broker_mode='ALPACA_PAPER', trading_threshold=.75))
+            return self.send(dict(rows=rows, jev_configured=bool(os.getenv('TYPESAFE_API_KEY')),broker_mode='ALPACA_PAPER', trading_threshold=CONFIG['threshold']))
         if self.path in ('/','/index.html'):
             self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('Cache-Control','no-store'); self.end_headers(); self.wfile.write((ROOT/'web/index.html').read_bytes()); return
         self.send({'error':'Not found'},404)

@@ -13,7 +13,7 @@ class ExecutableSelectionTests(unittest.TestCase):
         self.assertEqual(result['contract_selection']['version'],'executable_contract_v1')
         self.assertEqual(result['capital_required'],150)
         self.assertEqual(result['entry_quote_timestamp'],ts)
-        self.assertEqual(result['config']['threshold'],.75)
+        self.assertEqual(result['config']['threshold'],.60)
         c['ask']=2.5;c['bid']=2.45
         self.assertIsNone(evaluate(state,decision,[])['entry'])
     def test_frozen_legacy_config_not_replaced(self):

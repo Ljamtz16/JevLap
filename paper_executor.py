@@ -3,6 +3,7 @@ import argparse,json,os,re,sqlite3,time,urllib.request,urllib.error,urllib.parse
 from datetime import datetime,timezone
 from decimal import Decimal,ROUND_CEILING,ROUND_FLOOR
 from pathlib import Path
+from engine import CONFIG
 from credentials import load
 ROOT=Path(__file__).resolve().parent
 TERMINAL={'filled','canceled','expired','rejected','replaced','done_for_day'}
@@ -141,7 +142,7 @@ class Executor:
         if account['status']!='ACTIVE' or account.get('trading_blocked') or int(account.get('options_trading_level',0))<2:return
         # Newest snapshot, then highest confidence; baseline never influences selection.
         for row in sorted(decisions,key=lambda r:(r.get('decision_received_at',''),r['confidence']),reverse=True):
-            if row.get('research_mode')!='snapshot_shadow' or not row.get('contract') or row['side'] not in ('CALL','PUT') or row['confidence']<.75:continue
+            if row.get('research_mode')!='snapshot_shadow' or not row.get('contract') or row['side'] not in ('CALL','PUT') or row['confidence']<CONFIG['threshold']:continue
             if not fresh(row['timestamp'],120) or not fresh(row['decision_received_at'],120):continue
             cid='jv-entry-'+row['id']
             if self.db.execute('SELECT 1 FROM intents WHERE cid=?',(cid,)).fetchone():continue

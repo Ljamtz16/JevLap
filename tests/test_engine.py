@@ -11,8 +11,15 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(r['pnl'],50)
         self.assertEqual(r['reason'],'TP')
     def test_low_confidence_skips(self):
-        self.decision['confidence']=.7
+        self.decision['confidence']=.599
         self.assertEqual(evaluate(self.snapshot,self.decision,[])['status'],'SKIP')
+    def test_sixty_percent_enters_and_old_threshold_is_preserved(self):
+        self.decision['confidence']=.60
+        self.assertEqual(evaluate(self.snapshot,self.decision,[])['status'],'OPEN')
+        old=dict(threshold=.75,tp=.20,sl=-.10,max_hold=60,max_spread=.15,quantity=1)
+        row=evaluate(self.snapshot,self.decision,[],config=old)
+        self.assertEqual(row['status'],'SKIP')
+        self.assertEqual(row['config']['threshold'],.75)
     def test_future_entry_quote_rejected(self):
         self.snapshot['contracts'][0]['timestamp']='2026-10-06T10:01:00-04:00'
         self.assertIsNone(evaluate(self.snapshot,self.decision,[])['entry'])

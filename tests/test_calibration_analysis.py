@@ -16,7 +16,17 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(report['status'],'INSUFFICIENT_INDEPENDENT_DAYS')
         self.assertEqual(report['segments'][0]['independent_labels'],1)
         self.assertIsNone(report['segments'][0]['mapping'])
-        self.assertEqual(report['trading_threshold'],.75)
+        self.assertEqual(report['trading_threshold'],.60)
+    def test_threshold_stages_keep_all_decisions_and_frozen_eligibility(self):
+        day=datetime(2026,10,7,tzinfo=timezone.utc)
+        old=self.row(day,confidence=.60)
+        new=self.row(day+timedelta(days=1),confidence=.60);new['config']={'threshold':.60}
+        skipped=dict(new,timestamp=(day+timedelta(days=2)).isoformat(),status='SKIP',pnl=None)
+        report=analyze([old,new,skipped],day+timedelta(days=3))
+        self.assertEqual(report['diagnostics']['decisions'],3)
+        self.assertEqual(report['diagnostics']['qualified_directional_decisions'],2)
+        self.assertEqual(report['diagnostics']['closed_profit_labels'],2)
+        self.assertEqual(len(report['segments']),2)
     def test_future_exit_missing_outcome_and_models_are_separated(self):
         day=datetime(2026,10,6,tzinfo=timezone.utc);a=self.row(day);b=self.row(day);b['model']='different'
         future=self.row(day+timedelta(days=2));missing=dict(a,status='INCOMPLETE',pnl=None)

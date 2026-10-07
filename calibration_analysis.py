@@ -11,6 +11,7 @@ from collections import defaultdict, Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from session_policy import stamp, NY
+from engine import CONFIG
 
 ROOT = Path(__file__).resolve().parent
 MIN_TRAIN_DAYS, MIN_TEST_DAYS, MIN_TRAIN, MIN_TEST = 20, 5, 100, 25
@@ -44,8 +45,9 @@ def wilson(wins, n):
 
 def analyze(rows, as_of=None):
     as_of = as_of or datetime.now(timezone.utc)
+    all_rows = list(rows)
     groups, exclusions = defaultdict(list), Counter()
-    for row in sorted(rows, key=lambda r: stamp(r['timestamp'])):
+    for row in sorted(all_rows, key=lambda r: stamp(r['timestamp'])):
         if stamp(row['timestamp']) > as_of:
             exclusions['FUTURE_DECISION'] += 1; continue
         if row.get('research_mode') != 'snapshot_shadow' or row.get('side') not in ('CALL','PUT'):
@@ -63,7 +65,7 @@ def analyze(rows, as_of=None):
     for key, members in groups.items():
         rows = [m['row'] for m in members]
         bands = []
-        for lo,hi in [(0,.75),(.75,.80),(.80,.85),(.85,.90),(.90,1.001)]:
+        for lo,hi in [(0,.60),(.60,.65),(.65,.70),(.70,.75),(.75,.80),(.80,.85),(.85,.90),(.90,1.001)]:
             selected = [r for r in rows if lo <= r['confidence'] < hi]
             wins = sum(r['pnl'] > 0 for r in selected)
             bands.append(dict(low=lo,high=min(hi,1.),n=len(selected),wins=wins,
@@ -101,15 +103,16 @@ def analyze(rows, as_of=None):
                               independent_labels=len(independent),independent_days=len(days),
                               train_days=train_days,test_days=test_days,train_n=len(train),test_n=len(test),
                               mapping=blocks,metrics=metrics))
-    available=[r for r in rows if stamp(r['timestamp'])<=as_of and r.get('research_mode')=='snapshot_shadow']
-    qualified=[r for r in available if r.get('side') in ('CALL','PUT') and r.get('confidence',0)>=.75]
+    available=[r for r in all_rows if stamp(r['timestamp'])<=as_of and r.get('research_mode')=='snapshot_shadow']
+    qualified=[r for r in available if r.get('side') in ('CALL','PUT') and r.get('confidence',0)>=r.get('config',{}).get('threshold',.75)]
     diagnostics=dict(session_days=len({stamp(r['timestamp']).astimezone(NY).date() for r in available}),decisions=len(available),direction_counts=dict(Counter(r.get('side') for r in available)),
                      qualified_directional_decisions=len(qualified),
                      maximum_directional_confidence=max([r.get('confidence',0) for r in available if r.get('side') in ('CALL','PUT')]+[0]),
                      closed_profit_labels=sum(s['raw_decisions'] for s in summaries))
     return dict(version='jev_confidence_diagnostics_v1',generated_at_utc=as_of.isoformat(),diagnostics=diagnostics,
                 status='INSUFFICIENT_INDEPENDENT_DAYS' if not summaries or all(s['status'].startswith('INSUFFICIENT') for s in summaries) else 'REVIEW_REQUIRED',
-                trading_threshold=.75,auto_apply=False,provider_probabilities_unchanged=True,
+                trading_threshold=CONFIG['threshold'],auto_apply=False,provider_probabilities_unchanged=True,
+                qualification_policy='EACH_DECISION_FROZEN_THRESHOLD',
                 probability_semantics='P_RESPONSE_IS_NOT_P_PROFIT',
                 target='SHADOW_GROSS_PNL_POSITIVE_UNDER_FROZEN_POLICY',
                 requirements=dict(train_days=MIN_TRAIN_DAYS,test_days=MIN_TEST_DAYS,train_labels=MIN_TRAIN,test_labels=MIN_TEST),
@@ -122,7 +125,7 @@ def run(root=ROOT):
     report=analyze(rows)
     out=root/'data/calibration-analysis.json';tmp=out.with_suffix('.tmp')
     tmp.write_text(json.dumps(report,indent=2,allow_nan=False));tmp.replace(out)
-    print(json.dumps(dict(status=report['status'],segments=len(report['segments']),threshold=.75,
+    print(json.dumps(dict(status=report['status'],segments=len(report['segments']),threshold=report['trading_threshold'],
                          maximum_days=max([s['independent_days'] for s in report['segments']]+[0]))))
     return report
 
