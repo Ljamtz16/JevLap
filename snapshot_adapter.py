@@ -42,7 +42,11 @@ def adapt(envelope):
             # OCC suffix has C/P exactly 9 characters before the end.
             side={'C':'CALL','P':'PUT'}.get(name[-9:-8])
             if not side:continue
-            contracts.append(dict(symbol=name,side=side,bid=bid,ask=ask,timestamp=qt,volume=(option.get('dailyBar') or {}).get('v',0)))
+            bar=option.get('dailyBar') or {}
+            if bar.get('t') and datetime.fromisoformat(bar['t'].replace('Z','+00:00'))>captured:bar={}
+            contracts.append(dict(symbol=name,side=side,bid=bid,ask=ask,timestamp=qt,volume=bar.get('v'),
+                                  bid_size=quote.get('bs'),ask_size=quote.get('as'),
+                                  delta=(option.get('greeks') or {}).get('delta')))
             quotes.append(dict(symbol=name,timestamp=qt,bid=bid))
         # Baseline decisions and outcomes are never forwarded.
         features={'spot':record.get('spot')}

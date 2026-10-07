@@ -146,6 +146,7 @@ class Comparator:
                 if baseline is not None:
                     decision = dict(side=baseline, confidence=1, probability=None, model='frozen_rules')
                     sim = simulate(decision, row['config'])
+                    sim['strategy_mode'] = 'COMPARATOR_SHADOW'
                     sim = {k:v for k,v in sim.items() if k not in ('request','raw','snapshot')}
                 jev_side = row['side'] if row['confidence'] >= row['config']['threshold'] else 'NO_TRADE'
                 group = 'Sin comparar'
@@ -159,7 +160,8 @@ class Comparator:
                 for h in signal['auxiliary_15m']:
                     result = simulate(dict(side=h['side'], confidence=1, probability=None, model=h['id']),
                                       dict(row['config'], max_hold=15, tp=.10, sl=-.10))
-                    aux.append(dict(result,hypothesis=h['id'],horizon_min=15))
+                    aux.append(dict(result,hypothesis=h['id'],horizon_min=15,
+                                    strategy_mode='COMPARATOR_H02_SHADOW',account_kind='SNAPSHOT_SIMULATION'))
                 comparison = dict(signal=signal, group=group, jev_effective_side=jev_side, system_simulation=sim, auxiliary_15m=aux)
                 agreement = None if baseline is None else baseline == jev_side
                 if row.get('comparison') == comparison and row.get('baseline') == baseline and row.get('agreement') == agreement:

@@ -4,7 +4,7 @@ from engine import evaluate
 class SessionTests(unittest.TestCase):
  def setUp(self):
   self.ts='2026-10-06T19:50:00Z';self.contract='SPY261009C00780000'
-  self.snapshot=dict(timestamp=self.ts,symbol='SPY',features={},contracts=[dict(symbol=self.contract,side='CALL',bid=1.95,ask=2.,timestamp=self.ts,volume=10)])
+  self.snapshot=dict(timestamp=self.ts,symbol='SPY',features={'spot':780.},contracts=[dict(symbol=self.contract,side='CALL',bid=1.95,ask=2.,timestamp=self.ts,volume=10,bid_size=10,ask_size=10)])
   self.decision=dict(side='CALL',confidence=.8,probability=.8,model='test')
  def quote(self,ts,bid=1.96):return dict(symbol=self.contract,timestamp=ts,bid=bid)
  def test_session_close_and_unknown_horizon(self):

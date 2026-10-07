@@ -52,10 +52,25 @@ class PaperTests(unittest.TestCase):
   self.api.positions=[{'symbol':self.row['contract'],'asset_class':'us_option','qty':'1'}]
   self.api.orders=[{'symbol':self.row['contract'],'client_order_id':'jv-exit-abcdefgh-0','status':'new','created_at':now().isoformat(),'id':'exit-id'}]
   self.exe.tick([]);self.assertEqual(self.posts(),[])
- def test_premium_above_200_allowed_for_one_contract(self):
+ def test_premium_above_budget_blocks_one_contract(self):
   self.api.quote=lambda s:{'bp':2.9,'ap':3,'t':now().isoformat()}
+  self.exe.tick([self.row]);self.assertEqual(self.posts(),[])
+  with patch.dict(os.environ,{'JEV_PAPER_PREMIUM_FRACTION':'.4'}):
+   self.exe.tick([self.row])
+  self.assertEqual(len(self.posts()),1)
+  self.assertEqual(self.posts()[0][2]['qty'],'1')
+ def test_new_selector_requires_current_quote_liquidity(self):
+  self.row['config']={'contract_selection_version':'executable_contract_v1'}
+  original=self.api.request
+  def request(path,method='GET',body=None):
+   value=original(path,method,body)
+   if path.startswith('/v2/options/contracts/'):
+    value['expiration_date']=(now()+timedelta(days=3)).date().isoformat()
+   return value
+  self.api.request=request
+  self.exe.tick([self.row]);self.assertEqual(self.posts(),[])
+  self.api.quote=lambda s:{'bp':1.4,'ap':1.45,'bs':10,'as':10,'t':now().isoformat()}
   self.exe.tick([self.row]);self.assertEqual(len(self.posts()),1)
-  self.assertEqual(self.posts()[0][2]['qty'],'1');self.assertEqual(float(self.posts()[0][2]['limit_price']),3.0)
  def test_insufficient_buying_power_blocks_entry(self):
   self.api.quote=lambda s:{'bp':10.9,'ap':11,'t':now().isoformat()}
   self.exe.tick([self.row]);self.assertEqual(self.posts(),[])

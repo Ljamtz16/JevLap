@@ -39,3 +39,13 @@ class DashboardAPITests(unittest.TestCase):
     def test_unknown_detail_returns_404(self):
         with self.assertRaises(HTTPError) as caught:self.get('/api/decision?id=missing')
         self.assertEqual(caught.exception.code,404)
+    def test_local_account_and_analysis_are_separate_readonly_endpoints(self):
+        root=Path(self.tmp.name);art=root/'artifacts/intraday';art.mkdir(parents=True)
+        state={'cash':703.8,'mode':'LIVE_PAPER','live_ledger':[]}
+        (art/'PAPER_TRADING_LIVE_STATE_V01.json').write_text(json.dumps(state))
+        with patch.object(server,'SYSTEM_ROOT',root):
+            with self.get('/api/local-paper') as response:
+                value=json.load(response)
+            self.assertEqual(value['state'],state);self.assertEqual(value['account_kind'],'LOCAL_SIMULATION')
+            with self.get('/api/analysis') as response:
+                self.assertFalse(json.load(response)['entry_controls']['auto_apply'])

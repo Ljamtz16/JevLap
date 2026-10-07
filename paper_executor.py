@@ -87,7 +87,7 @@ class Executor:
         drawdown=float(account['equity'])-float(self.meta('start_equity'))
         if drawdown<=-50:self.meta('halt:'+session_day,'true')
         minutes_left=(stamp(clock['next_close'])-broker_time).total_seconds()/60
-        self.snapshot={'checked_at':now().isoformat(),'enabled':self.enabled,'equity':account['equity'],'buying_power':account.get('options_buying_power'), 'daily_equity_change':round(drawdown,2),'positions':positions,'open_orders':orders,'mode':'PAPER','account_verified':True}
+        self.snapshot={'checked_at':now().isoformat(),'enabled':self.enabled,'equity':account['equity'],'buying_power':account.get('options_buying_power'), 'daily_equity_change':round(drawdown,2),'positions':positions,'open_orders':orders,'mode':'ALPACA_PAPER','account_kind':'BROKER_PAPER','account_verified':True}
         closed=[]
         unclosed_fill=False
         for cid,body,b,state,created in rows:
@@ -153,10 +153,18 @@ class Executor:
             # Avoid expiry-day broker liquidation for v0.1.
             if contract['expiration_date']<=session_day:continue
             q=self.api.quote(symbol);bid=float(q['bp']);ask=float(q['ap'])
+            if row.get('config',{}).get('contract_selection_version')=='executable_contract_v1':
+                from datetime import date
+                dte=(date.fromisoformat(contract['expiration_date'])-date.fromisoformat(session_day)).days
+                policy=row.get('contract_selection',{}).get('policy') or {}
+                if not policy.get('min_dte',1)<=dte<=policy.get('max_dte',10):continue
+                if float(q.get('bs') or 0)<1 or float(q.get('as') or 0)<1:continue
             if (ask-bid)/ask>.15:continue
             limit=price(ask,True);cost=float(limit)*100
             bp=float(account.get('options_buying_power') or 0)
-            if cost>bp or cost<=0:continue
+            fraction=float(os.getenv('JEV_PAPER_PREMIUM_FRACTION','.20'))
+            cash=float(account.get('cash') or account['equity'])
+            if not 0<fraction<=1 or cost>min(bp,cash*fraction) or cost<=0:continue
             self.submit(cid,dict(symbol=symbol,qty='1',side='buy',position_intent='buy_to_open',type='limit',limit_price=limit,time_in_force='day',client_order_id=cid))
             break
 
