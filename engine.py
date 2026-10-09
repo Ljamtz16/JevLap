@@ -3,7 +3,7 @@ from datetime import datetime
 from session_policy import stamp, session_bounds, expiry_day, NY, SIMULATION_VERSION
 
 SIDES = ('CALL', 'PUT', 'NO_TRADE')
-CONFIG = dict(threshold=.60, tp=.20, sl=-.10, max_hold=60, max_spread=.15, quantity=1,
+CONFIG = dict(threshold=.65, tp=.20, sl=-.10, max_hold=60, max_spread=.15, quantity=1,
               contract_selection_version='executable_contract_v1', research_cash=1000.,
               premium_budget_fraction=.20, contract_selection_policy={})
 
