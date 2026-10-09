@@ -10,7 +10,7 @@ ROOT=Path(__file__).resolve().parent
 
 def refresh_observations(db, as_of):
     count=0
-    for ident,raw in db.execute("SELECT id,body FROM decisions WHERE json_extract(body,'$.contract') IS NOT NULL").fetchall():
+    for ident,raw in db.execute("SELECT id,body FROM decisions WHERE json_extract(body,'$.status')='OPEN' AND json_extract(body,'$.contract') IS NOT NULL").fetchall():
         old=json.loads(raw)
         observed=[dict(symbol=s,timestamp=t,bid=b) for s,t,b in db.execute('SELECT symbol,timestamp,bid FROM quotes WHERE symbol=? ORDER BY timestamp',(old['contract'],))]
         decision={k:old[k] for k in ('side','confidence','probability','model','request','raw')}
@@ -25,14 +25,18 @@ def refresh_observations(db, as_of):
 def run(source,once=False,canonical_source=None,start_date=COMMON_START_DATE):
     load()
     ROOT.joinpath('data').mkdir(exist_ok=True)
-    with sqlite3.connect(ROOT/'data/lab.sqlite') as db:
+    dbpath=ROOT/'data/lab.sqlite'
+    with sqlite3.connect(dbpath) as db:
         db.execute('CREATE TABLE IF NOT EXISTS decisions(id TEXT PRIMARY KEY, body TEXT NOT NULL)')
         db.execute('CREATE TABLE IF NOT EXISTS consumed(path TEXT PRIMARY KEY)')
         db.execute('CREATE TABLE IF NOT EXISTS quotes(symbol TEXT,timestamp TEXT,bid REAL,PRIMARY KEY(symbol,timestamp))')
+        db.execute("CREATE INDEX IF NOT EXISTS decisions_status ON decisions(json_extract(body,'$.status'))")
     while True:
-        for path, source_kind in snapshot_paths(source,canonical_source):
-            with sqlite3.connect(ROOT/'data/lab.sqlite') as db:
-                if db.execute('SELECT 1 FROM consumed WHERE path=?',(str(path),)).fetchone():continue
+        with sqlite3.connect(dbpath,timeout=20) as db:
+            consumed={row[0] for row in db.execute('SELECT path FROM consumed')}
+            for path, source_kind in snapshot_paths(source,canonical_source):
+                path_key=str(path)
+                if path_key in consumed:continue
                 try:
                     envelope=json.loads(path.read_text(encoding='utf-8'))
                     states,quotes,is_open=adapt(envelope)
@@ -42,10 +46,9 @@ def run(source,once=False,canonical_source=None,start_date=COMMON_START_DATE):
                     quotes=[q for q in quotes if q['symbol'] in contracts]
                 except (ValueError,KeyError,TypeError):
                     print('Incomplete or unsupported snapshot:',path.name,flush=True);continue
-                for q in quotes:db.execute('INSERT OR IGNORE INTO quotes VALUES(?,?,?)',(q['symbol'],q['timestamp'],q['bid']))
+                decisions=[]
                 for state in states:
                     age=(datetime.now(timezone.utc)-datetime.fromisoformat(state['timestamp'])).total_seconds()
-                    # Never request retrospective decisions or enter on stale data.
                     if not is_open or not 0<=age<=120:continue
                     ident=__import__('hashlib').sha256((state['timestamp']+state['symbol']).encode()).hexdigest()[:20]
                     if db.execute('SELECT 1 FROM decisions WHERE id=?',(ident,)).fetchone():continue
@@ -57,14 +60,18 @@ def run(source,once=False,canonical_source=None,start_date=COMMON_START_DATE):
                     row['source_file']=path.name
                     row['research_mode']='snapshot_shadow'
                     row['dataset_policy']=source_kind
-                    db.execute('INSERT INTO decisions VALUES(?,?)',(ident,json.dumps(row)))
-                db.execute('INSERT INTO consumed VALUES(?)',(str(path),))
-            print('Consumed:',path.name,flush=True)
-        # Finalize even when no new snapshot arrives after the closing bell.
-        with sqlite3.connect(ROOT/'data/lab.sqlite') as db:
+                    decisions.append((ident,json.dumps(row)))
+                for q in quotes:db.execute('INSERT OR IGNORE INTO quotes VALUES(?,?,?)',(q['symbol'],q['timestamp'],q['bid']))
+                if decisions:db.executemany('INSERT OR IGNORE INTO decisions VALUES(?,?)',decisions)
+                db.execute('INSERT OR IGNORE INTO consumed VALUES(?)',(path_key,))
+                db.commit()
+                consumed.add(path_key)
+                print('Consumed:',path.name,flush=True)
             refresh_observations(db,datetime.now(timezone.utc))
+            db.commit()
         if once:return
         time.sleep(10)
+
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--source',required=True,type=Path);p.add_argument('--once',action='store_true');p.add_argument('--canonical-source',type=Path);p.add_argument('--common-start-date',default=COMMON_START_DATE);a=p.parse_args()
     if not a.source.is_dir():p.error('Source directory does not exist')
