@@ -5,7 +5,8 @@ from session_policy import stamp, session_bounds, expiry_day, NY, SIMULATION_VER
 SIDES = ('CALL', 'PUT', 'NO_TRADE')
 CONFIG = dict(threshold=.65, tp=.20, sl=-.10, max_hold=60, max_spread=.15, quantity=1,
               contract_selection_version='executable_contract_v1', research_cash=1000.,
-              premium_budget_fraction=.20, contract_selection_policy={})
+              premium_budget_fraction=.20, research_contract_budget_mode='UNBOUNDED',
+              contract_selection_policy={})
 
 def decide(state):
     # Explicit allowlist: never send baseline decisions or future quotes to Jev.
@@ -34,6 +35,10 @@ def decide(state):
 
 def evaluate(snapshot, decision, quotes, baseline=None, config=None, as_of=None):
     cfg = dict(CONFIG, **(config or {}))
+    # Old persisted rows did not carry this flag. Preserve their original
+    # budgeted selector on replay instead of silently rewriting history.
+    if config is not None and 'research_contract_budget_mode' not in config:
+        cfg['research_contract_budget_mode'] = 'BUDGETED'
     if config is not None and 'contract_selection_version' not in config:
         cfg = {k:CONFIG[k] for k in ('threshold','tp','sl','max_hold','max_spread','quantity')}
         cfg.update(config)
@@ -60,7 +65,8 @@ def evaluate(snapshot, decision, quotes, baseline=None, config=None, as_of=None)
                                     snapshot.get('features', {}).get('spot'), cfg['research_cash'],
                                     cfg['premium_budget_fraction'], quantity=cfg['quantity'],
                                     underlying=snapshot['symbol'],
-                                    policy=dict(cfg['contract_selection_policy'], max_spread_pct=cfg['max_spread']))
+                                    policy=dict(cfg['contract_selection_policy'], max_spread_pct=cfg['max_spread']),
+                                    unbounded_budget=cfg.get('research_contract_budget_mode') == 'UNBOUNDED')
         result['contract_selection'] = selection
         c = selection['selected']
         if not c:

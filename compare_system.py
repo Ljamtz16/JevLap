@@ -176,6 +176,8 @@ class Comparator:
                 if signal.get('dataset_policy')=='SPY_PROSPECTIVE_CANONICAL_V1' and snapshot.get('snapshot_sha256')!=signal['snapshot_sha256']:
                     db.execute('DELETE FROM comparison_pending WHERE id=?',(ident,)); continue
                 def simulate(decision, config):
+                    # Keep frozen-system replay on its historical budgeted selector.
+                    config = dict(config, research_contract_budget_mode='BUDGETED')
                     first = evaluate(snapshot, decision, [], config=config)
                     if not first.get('contract'): return first
                     observed = [dict(symbol=s, timestamp=t, bid=b) for s,t,b in db.execute('SELECT symbol,timestamp,bid FROM quotes WHERE symbol=? ORDER BY timestamp', (first['contract'],))]

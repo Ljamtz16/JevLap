@@ -16,7 +16,7 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(report['status'],'INSUFFICIENT_INDEPENDENT_DAYS')
         self.assertEqual(report['segments'][0]['independent_labels'],1)
         self.assertIsNone(report['segments'][0]['mapping'])
-        self.assertEqual(report['trading_threshold'],.60)
+        self.assertEqual(report['trading_threshold'],.65)
     def test_threshold_stages_keep_all_decisions_and_frozen_eligibility(self):
         day=datetime(2026,10,7,tzinfo=timezone.utc)
         old=self.row(day,confidence=.60)

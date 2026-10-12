@@ -13,8 +13,8 @@ class EngineTests(unittest.TestCase):
     def test_low_confidence_skips(self):
         self.decision['confidence']=.599
         self.assertEqual(evaluate(self.snapshot,self.decision,[])['status'],'SKIP')
-    def test_sixty_percent_enters_and_old_threshold_is_preserved(self):
-        self.decision['confidence']=.60
+    def test_sixty_five_percent_enters_and_old_threshold_is_preserved(self):
+        self.decision['confidence']=.65
         self.assertEqual(evaluate(self.snapshot,self.decision,[])['status'],'OPEN')
         old=dict(threshold=.75,tp=.20,sl=-.10,max_hold=60,max_spread=.15,quantity=1)
         row=evaluate(self.snapshot,self.decision,[],config=old)

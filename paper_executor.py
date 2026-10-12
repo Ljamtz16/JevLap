@@ -163,9 +163,13 @@ class Executor:
             if (ask-bid)/ask>.15:continue
             limit=price(ask,True);cost=float(limit)*100
             bp=float(account.get('options_buying_power') or 0)
-            fraction=float(os.getenv('JEV_PAPER_PREMIUM_FRACTION','.20'))
             cash=float(account.get('cash') or account['equity'])
-            if not 0<fraction<=1 or cost>min(bp,cash*fraction) or cost<=0:continue
+            available=min(bp,cash)
+            if cost<=0:continue
+            if cost>available:
+                self.snapshot['last_entry_block']={'reason':'INSUFFICIENT_BUYING_POWER','symbol':symbol,
+                                                   'required':round(cost,2),'available':round(available,2)}
+                continue
             self.submit(cid,dict(symbol=symbol,qty='1',side='buy',position_intent='buy_to_open',type='limit',limit_price=limit,time_in_force='day',client_order_id=cid))
             break
 

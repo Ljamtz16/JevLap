@@ -27,10 +27,10 @@ class PaperTests(unittest.TestCase):
  def posts(self):return [c for c in self.api.calls if c[1]=='POST']
  def test_paper_endpoint_fixed(self):self.assertEqual(PaperAPI.trading,'https://paper-api.alpaca.markets')
  def test_disabled_never_sends(self):self.exe.enabled=False;self.exe.tick([self.row]);self.assertEqual(self.posts(),[])
- def test_sixty_percent_entry_boundary(self):
-  self.row['confidence']=.599
+ def test_sixty_five_percent_entry_boundary(self):
+  self.row['confidence']=.649
   self.exe.tick([self.row]);self.assertEqual(self.posts(),[])
-  self.row['confidence']=.60
+  self.row['confidence']=.65
   self.exe.tick([self.row]);self.assertEqual(len(self.posts()),1)
  def test_single_entry_idempotent(self):
   self.exe.tick([self.row]);self.exe.tick([self.row]);self.assertEqual(len(self.posts()),1);self.assertEqual(self.posts()[0][2]['position_intent'],'buy_to_open')
@@ -57,11 +57,9 @@ class PaperTests(unittest.TestCase):
   self.api.positions=[{'symbol':self.row['contract'],'asset_class':'us_option','qty':'1'}]
   self.api.orders=[{'symbol':self.row['contract'],'client_order_id':'jv-exit-abcdefgh-0','status':'new','created_at':now().isoformat(),'id':'exit-id'}]
   self.exe.tick([]);self.assertEqual(self.posts(),[])
- def test_premium_above_budget_blocks_one_contract(self):
+ def test_premium_can_use_full_available_buying_power(self):
   self.api.quote=lambda s:{'bp':2.9,'ap':3,'t':now().isoformat()}
-  self.exe.tick([self.row]);self.assertEqual(self.posts(),[])
-  with patch.dict(os.environ,{'JEV_PAPER_PREMIUM_FRACTION':'.4'}):
-   self.exe.tick([self.row])
+  self.exe.tick([self.row])
   self.assertEqual(len(self.posts()),1)
   self.assertEqual(self.posts()[0][2]['qty'],'1')
  def test_new_selector_requires_current_quote_liquidity(self):

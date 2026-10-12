@@ -3,7 +3,7 @@ from engine import evaluate
 
 
 class ExecutableSelectionTests(unittest.TestCase):
-    def test_new_policy_selects_affordable_contract_and_preserves_threshold(self):
+    def test_new_policy_selects_quality_contract_without_research_budget_cap(self):
         ts='2026-10-07T14:00:00Z'
         c=dict(symbol='SPY261009C00100000',side='CALL',bid=1.45,ask=1.5,timestamp=ts,
                volume=100,bid_size=10,ask_size=10,delta=.5)
@@ -13,9 +13,12 @@ class ExecutableSelectionTests(unittest.TestCase):
         self.assertEqual(result['contract_selection']['version'],'executable_contract_v1')
         self.assertEqual(result['capital_required'],150)
         self.assertEqual(result['entry_quote_timestamp'],ts)
-        self.assertEqual(result['config']['threshold'],.60)
+        self.assertEqual(result['config']['threshold'],.65)
+        self.assertEqual(result['contract_selection']['budget_mode'],'UNBOUNDED_RESEARCH')
         c['ask']=2.5;c['bid']=2.45
-        self.assertIsNone(evaluate(state,decision,[])['entry'])
+        self.assertEqual(evaluate(state,decision,[])['entry'],2.5)
+        historical=dict(result['config']);historical.pop('research_contract_budget_mode',None)
+        self.assertIsNone(evaluate(state,decision,[],config=historical)['entry'])
     def test_frozen_legacy_config_not_replaced(self):
         ts='2026-10-07T14:00:00Z'
         state=dict(timestamp=ts,symbol='SPY',features={},contracts=[dict(symbol='TEST',side='CALL',
