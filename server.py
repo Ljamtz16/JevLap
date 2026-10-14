@@ -4,6 +4,7 @@ from urllib.parse import urlsplit, parse_qs
 from pathlib import Path
 from http.server import ThreadingHTTPServer as HTTPServer, BaseHTTPRequestHandler
 from engine import CONFIG, decide, evaluate
+from options_research import build_options_research
 
 from credentials import load as load_credentials
 load_credentials()
@@ -20,6 +21,17 @@ class Handler(BaseHTTPRequestHandler):
         body=json.dumps(value, allow_nan=False).encode()
         self.send_response(code); self.send_header('Content-Type','application/json'); self.send_header('Cache-Control','no-store'); self.end_headers(); self.wfile.write(body)
     def do_GET(self):
+        path=urlsplit(self.path).path
+        query=parse_qs(urlsplit(self.path).query)
+        if path=='/api/options-research':
+            day=(query.get('day') or [today()])[0]
+            if day in ('today','__today'):day=today()
+            if day in ('all','__all'):day=today()
+            try:
+                value=build_options_research(DB,SYSTEM_ROOT,day)
+            except Exception as exc:
+                return self.send({'error':f'Options Research unavailable: {type(exc).__name__}: {exc}'},500)
+            return self.send(value)
         if self.path=='/api/local-paper':
             path=SYSTEM_ROOT/'artifacts/intraday/PAPER_TRADING_LIVE_STATE_V01.json'
             value=json.loads(path.read_text()) if path.exists() else {'status':'NOT_STARTED'}
@@ -51,6 +63,8 @@ class Handler(BaseHTTPRequestHandler):
                 # Full inputs and provider responses remain available on demand.
                 rows=[json.loads(r[0]) for r in db.execute("SELECT json_remove(body,'$.snapshot','$.request','$.raw') FROM decisions ORDER BY rowid DESC")]
             return self.send(dict(rows=rows, jev_configured=bool(os.getenv('TYPESAFE_API_KEY')),broker_mode='ALPACA_PAPER', trading_threshold=CONFIG['threshold']))
+        if path=='/options-research.js':
+            self.send_response(200); self.send_header('Content-Type','application/javascript; charset=utf-8'); self.send_header('Cache-Control','no-store'); self.end_headers(); self.wfile.write((ROOT/'web/options-research.js').read_bytes()); return
         if self.path in ('/','/index.html'):
             self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('Cache-Control','no-store'); self.end_headers(); self.wfile.write((ROOT/'web/index.html').read_bytes()); return
         self.send({'error':'Not found'},404)

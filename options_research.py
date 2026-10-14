@@ -1,0 +1,346 @@
+import json
+import sqlite3
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+VERSION = "JEV_OPTIONS_RESEARCH_BRIDGE_V01"
+SYMBOLS = ["SPY","QQQ","IWM","AAPL","NVDA","MSFT","AMZN","META","TSLA"]
+MATCH_WINDOW_SECONDS = 90
+
+
+def _load(path, default=None):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {} if default is None else default
+
+
+def _dt(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _today_ny():
+    return datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+
+
+def _day(row):
+    return row.get("decision_date") or row.get("market_date") or row.get("session_date") or str(row.get("signal_time") or row.get("timestamp") or "")[:10]
+
+
+def _side(value):
+    value = str(value or "").upper()
+    return value if value in {"CALL","PUT","NO_TRADE"} else value
+
+
+def _root_from_contract(contract):
+    text = str(contract or "")
+    for symbol in SYMBOLS:
+        if text.startswith(symbol):
+            return symbol
+    return None
+
+
+def _metric(horizons, horizon):
+    return (horizons or {}).get(str(horizon), {})
+
+
+def _strategy_row(strategy, source, side, evidence, episodes=0, metrics=None,
+                  entries=None, closed=None, opened=None, pnl=None, wins=None):
+    metrics = metrics or {}
+    n = metrics.get("n")
+    win_rate = metrics.get("win_rate")
+    if wins is not None and closed:
+        win_rate = wins / closed
+    return {
+        "strategy": strategy, "source": source, "side": _side(side), "evidence": evidence,
+        "episodes": episodes, "entries": episodes if entries is None else entries,
+        "closed": 0 if closed is None else closed, "open": 0 if opened is None else opened,
+        "n": n, "win_rate": win_rate, "mean_return": metrics.get("mean_return"),
+        "mean_mfe": metrics.get("mean_mfe"), "mean_mae": metrics.get("mean_mae"),
+        "tp10_before_sl10_rate": metrics.get("tp10_before_sl10_rate"), "pnl": pnl,
+    }
+
+
+def _read_jsonl(path):
+    out = []
+    try:
+        with Path(path).open(encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    continue
+    except OSError:
+        pass
+    return out
+
+
+def _jev_decisions(db_path, day):
+    if not Path(db_path).exists():
+        return []
+    with sqlite3.connect(str(db_path), timeout=20) as db:
+        table = "decisions_dashboard" if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='decisions_dashboard'").fetchone() else "decisions"
+        rows = db.execute(
+            f"SELECT body FROM {table} WHERE json_extract(body,'$.session_date')=? ORDER BY rowid",
+            (day,),
+        ).fetchall()
+    out = []
+    for (body,) in rows:
+        try:
+            row = json.loads(body)
+        except ValueError:
+            continue
+        if day and _day(row) != day:
+            continue
+        out.append({
+            "id": row.get("id"), "time": row.get("timestamp"), "day": _day(row),
+            "symbol": row.get("symbol"), "side": _side(row.get("side")),
+            "confidence": row.get("confidence"), "status": row.get("status"),
+            "active": row.get("status") not in {None, "SKIP"} and bool(row.get("contract")),
+            "pnl": row.get("pnl"), "contract": row.get("contract"),
+        })
+    return out
+
+
+def _put_closes(events):
+    out = {}
+    for event in events:
+        if event.get("event") == "PAPER_POSITION_CLOSED":
+            out[event.get("signal_id")] = {
+                "status": "CLOSED", "pnl": event.get("net_pnl"),
+                "result": event.get("reason"), "exit_time": event.get("logged_at_utc"),
+            }
+    return out
+
+
+def _normalize_live(options_root, day):
+    a = Path(options_root) / "artifacts/intraday"
+    rows = []
+    local = _load(a / "PAPER_TRADING_LIVE_STATE_V01.json", {})
+    for item in list(local.get("live_ledger") or []) + list(local.get("open_positions") or []):
+        if day and _day(item) != day:
+            continue
+        rows.append({
+            "id": item.get("signal_id"), "time": item.get("signal_time") or item.get("entry_time"),
+            "day": _day(item), "symbol": _root_from_contract(item.get("contract")) or "SPY",
+            "side": _side(item.get("side")), "source": "Frozen", "strategy": item.get("hypothesis"),
+            "contract": item.get("contract"), "status": item.get("status"),
+            "pnl": item.get("net_pnl"), "result": item.get("exit_reason"),
+            "evidence": "PAPER", "broker_order": False,
+        })
+    put = _load(a / "PUT_CONFIRM_LIVE_STATE_V02.json", {})
+    put_closes = _put_closes(_read_jsonl(a / "PUT_CONFIRM_LIVE_EVENTS_V02.jsonl"))
+    for item in put.get("signals") or []:
+        if day and _day(item) != day:
+            continue
+        close = put_closes.get(item.get("signal_id"), {})
+        rows.append({
+            "id": item.get("signal_id"), "time": item.get("signal_time"), "day": _day(item),
+            "symbol": _root_from_contract(item.get("contract")) or "SPY", "side": "PUT",
+            "source": "PUT v0.2", "strategy": "PUT_CONFIRM_V02", "contract": item.get("contract"),
+            "status": close.get("status", item.get("paper_status")), "pnl": close.get("pnl"),
+            "result": close.get("result"), "evidence": "PROSPECTIVE", "broker_order": True,
+        })
+    for filename, source in [
+        ("H09_PUT_FLOW_LIVE_STATE_V01.json", "H09"),
+        ("MULTISYMBOL_LIVE_STATE_V01.json", "Multi-Symbol"),
+    ]:
+        state = _load(a / filename, {})
+        for item in state.get("signals") or []:
+            if day and _day(item) != day:
+                continue
+            rows.append({
+                "id": item.get("signal_id"), "time": item.get("signal_time"), "day": _day(item),
+                "symbol": item.get("symbol") or "SPY", "side": _side(item.get("side")),
+                "source": source, "strategy": item.get("candidate_id"), "contract": item.get("contract"),
+                "status": "SHADOW", "pnl": None, "result": None,
+                "evidence": "PROSPECTIVE", "broker_order": False,
+            })
+    return sorted(rows, key=lambda x: x.get("time") or "")
+
+
+def _strategy_results(options_root, day, live_rows):
+    a = Path(options_root) / "artifacts/intraday"
+    result = []
+    grouped = defaultdict(list)
+    for row in live_rows:
+        if row["source"] in {"Frozen", "PUT v0.2"}:
+            grouped[(row["strategy"], row["source"], row["side"])].append(row)
+    for (strategy, source, side), rows in grouped.items():
+        closed = [r for r in rows if r.get("status") == "CLOSED"]
+        result.append(_strategy_row(
+            strategy, source, side, "PAPER" if source == "Frozen" else "PROSPECTIVE",
+            episodes=len(rows), entries=len(rows), closed=len(closed),
+            opened=len(rows) - len(closed), pnl=sum(float(r.get("pnl") or 0) for r in closed),
+            wins=sum(1 for r in closed if float(r.get("pnl") or 0) > 0),
+        ))
+    h09 = _load(a / "H09_PUT_FLOW_PROSPECTIVE_V01.json", {})
+    for cid, payload in (h09.get("discovery", {}).get("by_candidate") or {}).items():
+        result.append(_strategy_row(cid, "H09", "PUT", "DISCOVERY", payload.get("episodes", 0), _metric(payload.get("horizons"), 60)))
+    h09p = h09.get("prospective", {}).get("by_candidate") or {}
+    for cid, payload in h09p.items():
+        result.append(_strategy_row(cid, "H09", "PUT", "PROSPECTIVE", payload.get("episodes", 0), _metric(payload.get("horizons"), 60)))
+    multi = _load(a / "MULTISYMBOL_DISCOVERY_V01.json", {})
+    candidates = {c.get("id"): c for c in multi.get("candidates") or []}
+    for cid, payload in (multi.get("discovery", {}).get("by_candidate") or {}).items():
+        result.append(_strategy_row(cid, "Multi-Symbol", candidates.get(cid, {}).get("side"), "DISCOVERY", payload.get("episodes", 0), _metric(payload.get("horizons"), 30)))
+    multip = _load(a / "MULTISYMBOL_PROSPECTIVE_V01.json", {})
+    for cid, payload in (multip.get("summary", {}).get("by_candidate") or {}).items():
+        result.append(_strategy_row(cid, "Multi-Symbol", candidates.get(cid, {}).get("side"), "PROSPECTIVE", payload.get("episodes", 0), _metric(payload.get("horizons"), 30)))
+    return result
+
+
+def _by_symbol(options_root, live_rows):
+    a = Path(options_root) / "artifacts/intraday"
+    multi = _load(a / "MULTISYMBOL_DISCOVERY_V01.json", {})
+    by_candidate_symbol = multi.get("discovery", {}).get("by_candidate_symbol") or {}
+    candidates = {c.get("id"): c for c in multi.get("candidates") or []}
+    out = []
+    for symbol in SYMBOLS:
+        call = put = 0
+        metrics = []
+        for cid, symbols in by_candidate_symbol.items():
+            payload = (symbols or {}).get(symbol)
+            if not payload:
+                continue
+            side = _side(candidates.get(cid, {}).get("side"))
+            if side == "CALL": call += payload.get("episodes", 0)
+            if side == "PUT": put += payload.get("episodes", 0)
+            m = _metric(payload.get("horizons"), 30)
+            if m.get("n"):
+                metrics.append((m.get("n", 0), m.get("win_rate"), m.get("mean_return")))
+        total_n = sum(m[0] for m in metrics)
+        weighted_win = sum(m[0] * (m[1] or 0) for m in metrics) / total_n if total_n else None
+        weighted_return = sum(m[0] * (m[2] or 0) for m in metrics) / total_n if total_n else None
+        live = [r for r in live_rows if r.get("symbol") == symbol]
+        out.append({
+            "symbol": symbol, "call_episodes_discovery": call, "put_episodes_discovery": put,
+            "live_signals": len(live), "live_call": sum(r["side"] == "CALL" for r in live),
+            "live_put": sum(r["side"] == "PUT" for r in live), "win_rate_discovery": weighted_win,
+            "mean_return_discovery": weighted_return,
+        })
+    return out
+
+
+def _match(jev_rows, option_rows):
+    comparisons = []
+    used_jev = set()
+    for opt in option_rows:
+        ot = _dt(opt.get("time"))
+        candidates = []
+        if ot:
+            for j in jev_rows:
+                if j.get("symbol") != opt.get("symbol"):
+                    continue
+                jt = _dt(j.get("time"))
+                if jt:
+                    delta = abs((jt - ot).total_seconds())
+                    if delta <= MATCH_WINDOW_SECONDS:
+                        candidates.append((delta, j))
+        if candidates:
+            delta, j = min(candidates, key=lambda x: x[0])
+            used_jev.add(j.get("id"))
+            active = bool(j.get("active"))
+            same = active and j.get("side") == opt.get("side") and j.get("side") in {"CALL","PUT"}
+            opposite = active and {j.get("side"), opt.get("side")} == {"CALL","PUT"}
+            group = "Coinciden" if same else "Direcciones opuestas" if opposite else "Options solo"
+            comparisons.append({
+                "time": opt.get("time"), "symbol": opt.get("symbol"), "options_side": opt.get("side"),
+                "options_strategy": opt.get("strategy"), "options_source": opt.get("source"),
+                "options_evidence": opt.get("evidence"),
+                "jev_side": j.get("side"), "jev_active": active, "jev_status": j.get("status"),
+                "jev_confidence": j.get("confidence"), "jev_pnl": j.get("pnl"),
+                "group": group, "delta_seconds": delta, "result": opt.get("result"), "options_pnl": opt.get("pnl"),
+            })
+        else:
+            comparisons.append({
+                "time": opt.get("time"), "symbol": opt.get("symbol"), "options_side": opt.get("side"),
+                "options_strategy": opt.get("strategy"), "options_source": opt.get("source"),
+                "options_evidence": opt.get("evidence"),
+                "jev_side": None, "jev_confidence": None, "jev_pnl": None,
+                "group": "Options solo", "delta_seconds": None, "result": opt.get("result"), "options_pnl": opt.get("pnl"),
+            })
+    for j in jev_rows:
+        if j.get("id") in used_jev or not j.get("active") or j.get("side") not in {"CALL","PUT"}:
+            continue
+        comparisons.append({
+            "time": j.get("time"), "symbol": j.get("symbol"), "options_side": None,
+            "options_strategy": None, "options_source": "Jev", "options_evidence": None, "jev_side": j.get("side"),
+            "jev_active": True, "jev_status": j.get("status"), "jev_confidence": j.get("confidence"),
+            "jev_pnl": j.get("pnl"), "group": "Jev solo",
+            "delta_seconds": None, "result": None, "options_pnl": None,
+        })
+    return sorted(comparisons, key=lambda r: r.get("time") or "")
+
+
+def _group_summary(rows):
+    names = ["Coinciden","Jev solo","Options solo","Direcciones opuestas","Ambos abstienen","Sin comparar"]
+    out = []
+    for name in names:
+        group = [r for r in rows if r.get("group") == name]
+        pnl = [r.get("jev_pnl") for r in group if r.get("jev_pnl") is not None]
+        out.append({"group": name, "signals": len(group), "jev_closed": len(pnl), "jev_pnl": sum(float(x) for x in pnl) if pnl else 0.0})
+    return out
+
+
+def _confidence(rows):
+    bands = [(0,.60),(.60,.65),(.65,.70),(.70,.75),(.75,.80),(.80,.90),(.90,1.01)]
+    out = []
+    for low, high in bands:
+        group = [r for r in rows if r.get("jev_confidence") is not None and low <= float(r["jev_confidence"]) < high]
+        matches = [r for r in group if r.get("group") == "Coinciden"]
+        opposed = [r for r in group if r.get("group") == "Direcciones opuestas"]
+        out.append({
+            "band": f"{int(low*100)}–{min(100,int(high*100))}%", "signals": len(group),
+            "coincide": len(matches), "opposed": len(opposed),
+            "jev_pnl_when_coincide": sum(float(r.get("jev_pnl") or 0) for r in matches),
+            "jev_pnl_when_opposed": sum(float(r.get("jev_pnl") or 0) for r in opposed),
+        })
+    return out
+
+
+def _slim_summary(section):
+    section = section or {}
+    episodes = section.get("episodes", 0)
+    if isinstance(episodes, list):
+        episodes = len(episodes)
+    return {"episodes": episodes, "by_candidate": section.get("by_candidate", {})}
+
+
+def build_options_research(db_path, options_root, day=None):
+    day = day or _today_ny()
+    live = _normalize_live(options_root, day)
+    jev = _jev_decisions(db_path, day)
+    comparisons = _match(jev, live)
+    a = Path(options_root) / "artifacts/intraday"
+    h09 = _load(a / "H09_PUT_FLOW_PROSPECTIVE_V01.json", {})
+    multi = _load(a / "MULTISYMBOL_DISCOVERY_V01.json", {})
+    multip = _load(a / "MULTISYMBOL_PROSPECTIVE_V01.json", {})
+    return {
+        "version": VERSION, "read_only": True, "broker_actions_enabled": False,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(), "day": day,
+        "match_window_seconds": MATCH_WINDOW_SECONDS, "symbols": SYMBOLS,
+        "strategy_results": _strategy_results(options_root, day, live),
+        "by_symbol": _by_symbol(options_root, live),
+        "live_signals": live,
+        "comparison": {"rows": comparisons, "groups": _group_summary(comparisons)},
+        "confidence": _confidence(comparisons),
+        "h09": {
+            "discovery_cutoff": h09.get("discovery_cutoff"),
+            "prospective_start_after": h09.get("prospective_start_after"),
+            "discovery": _slim_summary(h09.get("discovery")), "prospective": _slim_summary(h09.get("prospective")),
+        },
+        "multisymbol": {
+            "discovery_cutoff": multi.get("discovery_cutoff"),
+            "prospective_start_after": multi.get("prospective_start_after"),
+            "candidates": multi.get("candidates", []), "discovery": _slim_summary(multi.get("discovery")),
+            "prospective": _slim_summary(multip.get("summary")),
+        },
+    }
