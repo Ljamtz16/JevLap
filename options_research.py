@@ -347,6 +347,97 @@ def _live_shadow_bundle(options_root, day):
     }
 
 
+
+def _meta_alpaca_bundle(options_root):
+    a = Path(options_root) / "artifacts/intraday"
+    broker = _load(a / "META_ALPACA_PAPER_STATE_V01.json", {})
+    portfolio = _load(a / "META_PORTFOLIO_LIVE_STATE_V01.json", {})
+
+    def number(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    account = broker.get("account") or {}
+    broker_positions = broker.get("broker_positions") or []
+    open_positions = portfolio.get("open_positions") or []
+    ledger = portfolio.get("live_ledger") or []
+    trades = list((broker.get("trades") or {}).values())
+    trades.sort(key=lambda r: str(r.get("local_exit_time") or r.get("local_entry_time") or ""))
+    last_broker = trades[-1] if trades else None
+    last_local = ledger[-1] if ledger else None
+
+    policy = portfolio.get("policy") or {}
+    session_date = portfolio.get("session_date")
+    daily_start = number(portfolio.get("daily_start_cash"))
+    portfolio_equity = number(portfolio.get("equity"))
+    halt_fraction = number(policy.get("daily_loss_halt_fraction"))
+    daily_pnl = portfolio_equity - daily_start if session_date and portfolio_equity is not None and daily_start is not None else None
+    halt_threshold = -(daily_start * halt_fraction) if daily_start is not None and halt_fraction is not None else None
+    halt_triggered = bool(
+        session_date and not open_positions and daily_pnl is not None and halt_threshold is not None
+        and daily_pnl <= halt_threshold
+    )
+
+    def slim_trade(row):
+        if not row:
+            return None
+        return {k: row.get(k) for k in (
+            "signal_id", "episode_id", "source", "symbol", "contract", "quantity", "status",
+            "local_entry_time", "local_exit_time", "local_exit_reason", "local_net_pnl",
+            "broker_exit_reason", "broker_gross_pnl", "entry_time", "exit_time", "exit_reason", "net_pnl",
+        ) if k in row}
+
+    return {
+        "version": "META_ALPACA_BRIDGE_V01",
+        "read_only": True,
+        "available": bool(broker or portfolio),
+        "broker": {
+            "updated_at_utc": broker.get("updated_at_utc"),
+            "submit_orders": bool(broker.get("submit_orders")),
+            "paper_only": bool(broker.get("paper_only", True)),
+            "market_open": broker.get("broker_market_open"),
+            "reconciliation_required": bool(broker.get("reconciliation_required")),
+            "status": account.get("status"),
+            "equity": number(account.get("equity")),
+            "cash": number(account.get("cash")),
+            "buying_power": number(account.get("buying_power")),
+            "options_buying_power": number(account.get("options_buying_power")),
+            "options_trading_level": account.get("options_trading_level"),
+            "positions": broker_positions,
+            "tracked_trades": len(trades),
+            "last_trade": slim_trade(last_broker),
+            "last_actions": broker.get("last_actions") or [],
+        },
+        "portfolio": {
+            "version": portfolio.get("version"),
+            "mode": portfolio.get("mode"),
+            "live_start_utc": portfolio.get("live_start_utc"),
+            "updated_at_utc": portfolio.get("updated_at_utc"),
+            "initial_cash": number(portfolio.get("initial_cash")),
+            "cash": number(portfolio.get("cash")),
+            "equity": portfolio_equity,
+            "realized_net_pnl": number(portfolio.get("realized_net_pnl")),
+            "session_date": session_date,
+            "daily_start_cash": daily_start,
+            "daily_pnl": daily_pnl,
+            "open_positions": open_positions,
+            "closed_trades": len(ledger),
+            "last_trade": slim_trade(last_local),
+            "daily_halt": {
+                "state": "TRIGGERED" if halt_triggered else "ARMED",
+                "triggered": halt_triggered,
+                "loss_fraction": halt_fraction,
+                "threshold_pnl": halt_threshold,
+            },
+            "policy": {k: policy.get(k) for k in (
+                "max_global_positions", "quantity", "ranking_window_seconds", "tp_pct", "sl_pct",
+                "max_horizon_minutes", "max_spread_pct", "min_abs_delta", "max_abs_delta", "min_dte", "max_dte",
+            )},
+        },
+    }
+
 def build_options_research(db_path, options_root, day=None):
     day = day or _today_ny()
     live = _normalize_live(options_root, day)
@@ -366,6 +457,7 @@ def build_options_research(db_path, options_root, day=None):
         "comparison": {"rows": comparisons, "groups": _group_summary(comparisons)},
         "confidence": _confidence(comparisons),
         "meta_live": _live_shadow_bundle(options_root, day),
+        "meta_alpaca": _meta_alpaca_bundle(options_root),
         "h09": {
             "discovery_cutoff": h09.get("discovery_cutoff"),
             "prospective_start_after": h09.get("prospective_start_after"),
