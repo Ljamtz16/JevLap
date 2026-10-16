@@ -128,4 +128,3 @@ if __name__=='__main__':
         print(f'Jev Lab Tailscale: http://{tail_ip}:{port}',flush=True)
     print(f'Jev Lab local: http://127.0.0.1:{port} — estado del ejecutor en /api/paper',flush=True)
     HTTPServer(('127.0.0.1',port),Handler).serve_forever()
-

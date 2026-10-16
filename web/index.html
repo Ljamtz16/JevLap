@@ -158,4 +158,3 @@ $('upload').onchange=async e=>{try{input=JSON.parse(await e.target.files[0].text
 $('evaluate').onclick=async()=>{if(!input){$('message').textContent='Selecciona primero un JSON en el formato {snapshot: …}.';return}try{$('evaluate').disabled=true;$('message').textContent='Consultando Jev…';let r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});let out=await r.json();if(!r.ok)throw Error(out.error);$('message').textContent='Decisión guardada.';$('detail').textContent=JSON.stringify(out,null,2);if(live)await refreshLive()}catch(e){$('message').textContent=e.message}finally{$('evaluate').disabled=false}};
 setInterval(()=>{if(live){updateBanner();renderPaper();refreshLive()}},15000);render();updateBanner();refreshLive();
 </script><script src="/options-research.js"></script></html>
-
