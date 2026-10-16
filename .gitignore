@@ -6,3 +6,10 @@ __pycache__/
 *.dpapi
 *.log
 .venv/
+
+# Local UI backups / transient SQLite sidecars.
+web/*.before-*
+*.sqlite-wal
+*.sqlite-shm
+*.db-wal
+*.db-shm
