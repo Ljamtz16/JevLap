@@ -17,7 +17,7 @@ class OptionsResearchTests(unittest.TestCase):
         self.dump('PAPER_TRADING_LIVE_STATE_V01.json',{'live_ledger':[],'open_positions':[]})
         self.dump('PUT_CONFIRM_LIVE_STATE_V02.json',{'signals':[]})
         self.dump('H09_PUT_FLOW_LIVE_STATE_V01.json',{'signals':[{'signal_id':'h1','candidate_id':'H09B','side':'PUT','decision_date':'2026-10-15','signal_time':'2026-10-15T14:00:00+00:00','contract':'SPY261016P00770000'}]})
-        self.dump('H09_PUT_FLOW_PROSPECTIVE_V01.json',{'discovery_cutoff':'2026-10-14','prospective_start_after':'2026-10-14','discovery':{'by_candidate':{'H09B':{'episodes':4,'horizons':{'60':{'n':4,'mean_return':.1,'win_rate':.75,'tp10_before_sl10_rate':.5}}}}},'prospective':{'by_candidate':{}}})
+        self.dump('H09_PUT_FLOW_PROSPECTIVE_V01.json',{'discovery_cutoff':'2026-10-14','prospective_start_after':'2026-10-14','discovery':{'by_candidate':{'H09B':{'episodes':4,'horizons':{'60':{'n':4,'mean_return':.1,'win_rate':.75,'tp10_before_sl10_rate':.5,'pnl_1_contract_n':4,'total_pnl_1_contract':120.0,'mean_pnl_1_contract':30.0}}}}},'prospective':{'by_candidate':{}}})
         self.dump('MULTISYMBOL_LIVE_STATE_V01.json',{'signals':[]})
         self.dump('MULTISYMBOL_DISCOVERY_V01.json',{'candidates':[{'id':'MS01','side':'PUT'}],'discovery':{'by_candidate':{'MS01':{'episodes':3,'horizons':{'30':{'n':3,'mean_return':.03,'win_rate':.66}}}},'by_candidate_symbol':{'MS01':{'NVDA':{'episodes':3,'horizons':{'30':{'n':3,'mean_return':.03,'win_rate':.66}}}}}}})
         self.dump('MULTISYMBOL_PROSPECTIVE_V01.json',{'summary':{'by_candidate':{}}})
@@ -31,6 +31,7 @@ class OptionsResearchTests(unittest.TestCase):
         groups={x['group']:x['signals'] for x in out['comparison']['groups']}; self.assertEqual(groups['Coinciden'],1)
         h09=[r for r in out['strategy_results'] if r['source']=='H09'][0]
         self.assertEqual(h09['evidence'],'DISCOVERY'); self.assertEqual(h09['mean_return'],.1)
+        self.assertEqual(h09['pnl'],120.0); self.assertEqual(h09['mean_pnl'],30.0); self.assertEqual(h09['pnl_basis'],'SIM 1c · 60m')
         self.assertEqual(out['meta_live']['meta']['session_counts']['ACCEPT'],1)
         self.assertEqual(out['meta_live']['episode_engine']['ttt_confirmed'],1)
         self.assertEqual(out['meta_live']['episode_engine']['would_authorize'],1)

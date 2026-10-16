@@ -6,6 +6,7 @@ const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>'
 const num=v=>v==null||!Number.isFinite(Number(v))?'—':Number(v).toFixed(2);
 const pct=v=>v==null||!Number.isFinite(Number(v))?'—':(Number(v)*100).toFixed(1)+'%';
 const signed=v=>v==null||!Number.isFinite(Number(v))?'—':`<span class="${Number(v)>0?'up':Number(v)<0?'down':''}">${Number(v)>=0?'+':''}${num(v)}</span>`;
+const money=v=>v==null||!Number.isFinite(Number(v))?'—':`<span class="${Number(v)>0?'up':Number(v)<0?'down':''}">${Number(v)>0?'+':Number(v)<0?'-':''}$${num(Math.abs(Number(v)))}</span>`;
 const ret=v=>v==null||!Number.isFinite(Number(v))?'—':`<span class="${Number(v)>0?'up':Number(v)<0?'down':''}">${Number(v)>=0?'+':''}${(Number(v)*100).toFixed(2)}%</span>`;
 let payload=null;
 
@@ -34,7 +35,7 @@ function install(){
    <div class="card"><h2>META LIVE <small>· ACCEPT / WAIT / BLOCK · últimas 12</small></h2><div class="stats" id="or-meta-stats" style="margin-bottom:14px"></div><p id="or-meta-context" class="muted"></p><div id="or-meta-live" class="table"></div></div>
    <div class="card"><h2>TTT / Hysteresis <small>· últimas 12</small></h2><p class="muted">H01 confirma la primera señal limpia; H09/Multi requieren persistencia. Hysteresis nunca sobreescribe un BLOCK/WAIT de Meta.</p><div id="or-episodes" class="table"></div></div>
   </div>
-  <div class="card" style="margin-bottom:20px"><h2>Resultados por estrategia <small>· discovery, prospectivo y paper separados</small></h2><div id="or-strategies" class="table"></div></div>
+  <div class="card" style="margin-bottom:20px"><h2>Resultados por estrategia <small>· discovery, prospectivo y paper separados</small></h2><div id="or-strategies" class="table"></div><p class="muted">PAPER local = P&L de la simulación ejecutada. SIM 1c = 1 contrato, entrada al ask y salida según el retorno terminal de la ventana indicada (H09 60m; Multi 30m), sin slippage, comisiones ni restricciones de cartera. n indica episodios con datos completos para calcular dólares.</p></div>
   <div class="grid">
    <div class="card"><h2>Jev frente a Options Research</h2><div id="or-groups" class="table"></div></div>
    <div class="card"><h2>Resultados por confianza Jev</h2><div id="or-confidence" class="table"></div></div>
@@ -149,9 +150,9 @@ function render(){
  renderMetaLive();
  renderMetaAlpaca();
  renderOperationalFlow();
- q('or-strategies').innerHTML=table(['Estrategia','Fuente','Evidencia','Lado','Episodios/entradas','Cerradas','Abiertas','Win rate','Retorno medio','TP10 antes SL10','P&L'],strategies.map(r=>`<tr>${[
+ q('or-strategies').innerHTML=table(['Estrategia','Fuente','Evidencia','Lado','Episodios/entradas','Cerradas','Abiertas','Win rate','Retorno medio','TP10 antes SL10','P&L total','P&L/entrada','Base'],strategies.map(r=>`<tr>${[
   r.strategy,r.source,r.evidence,r.side,r.episodes??r.entries,r.closed,r.open
- ].map(v=>`<td>${esc(v)}</td>`).join('')}<td>${pct(r.win_rate)}</td><td>${ret(r.mean_return)}</td><td>${pct(r.tp10_before_sl10_rate)}</td><td>${signed(r.pnl)}</td></tr>`));
+ ].map(v=>`<td>${esc(v)}</td>`).join('')}<td>${pct(r.win_rate)}</td><td>${ret(r.mean_return)}</td><td>${pct(r.tp10_before_sl10_rate)}</td><td>${money(r.pnl)}</td><td>${money(r.mean_pnl)}</td><td>${esc((r.pnl_basis||'—')+(r.pnl_n!=null?' · n='+r.pnl_n:''))}</td></tr>`));
  const groupNames=['Coinciden','Jev solo','Options solo','Direcciones opuestas','Ambos abstienen','Sin comparar'];
  const groups=groupNames.map(name=>{const rows=signals.filter(r=>r.group===name),closed=rows.filter(r=>r.jev_pnl!=null);return {group:name,signals:rows.length,jev_closed:closed.length,jev_pnl:closed.reduce((a,r)=>a+Number(r.jev_pnl||0),0)}});
  q('or-groups').innerHTML=table(['Grupo','Señales','Jev cerradas','Jev P&L'],groups.map(r=>`<tr><td>${esc(r.group)}</td><td>${r.signals}</td><td>${r.jev_closed}</td><td>${signed(r.jev_pnl)}</td></tr>`));

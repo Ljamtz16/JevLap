@@ -52,19 +52,26 @@ def _metric(horizons, horizon):
 
 
 def _strategy_row(strategy, source, side, evidence, episodes=0, metrics=None,
-                  entries=None, closed=None, opened=None, pnl=None, wins=None):
+                  entries=None, closed=None, opened=None, pnl=None, wins=None, pnl_basis=None):
     metrics = metrics or {}
     n = metrics.get("n")
     win_rate = metrics.get("win_rate")
     if wins is not None and closed:
         win_rate = wins / closed
+    if pnl is None and metrics.get("total_pnl_1_contract") is not None:
+        pnl = metrics.get("total_pnl_1_contract")
+    mean_pnl = metrics.get("mean_pnl_1_contract")
+    if mean_pnl is None and pnl is not None and closed:
+        mean_pnl = float(pnl) / closed
     return {
         "strategy": strategy, "source": source, "side": _side(side), "evidence": evidence,
         "episodes": episodes, "entries": episodes if entries is None else entries,
         "closed": 0 if closed is None else closed, "open": 0 if opened is None else opened,
         "n": n, "win_rate": win_rate, "mean_return": metrics.get("mean_return"),
         "mean_mfe": metrics.get("mean_mfe"), "mean_mae": metrics.get("mean_mae"),
-        "tp10_before_sl10_rate": metrics.get("tp10_before_sl10_rate"), "pnl": pnl,
+        "tp10_before_sl10_rate": metrics.get("tp10_before_sl10_rate"),
+        "pnl": pnl, "mean_pnl": mean_pnl, "pnl_n": metrics.get("pnl_1_contract_n") or closed,
+        "pnl_basis": pnl_basis,
     }
 
 
@@ -180,20 +187,21 @@ def _strategy_results(options_root, day, live_rows):
             episodes=len(rows), entries=len(rows), closed=len(closed),
             opened=len(rows) - len(closed), pnl=sum(float(r.get("pnl") or 0) for r in closed),
             wins=sum(1 for r in closed if float(r.get("pnl") or 0) > 0),
+            pnl_basis="PAPER local",
         ))
     h09 = _load(a / "H09_PUT_FLOW_PROSPECTIVE_V01.json", {})
     for cid, payload in (h09.get("discovery", {}).get("by_candidate") or {}).items():
-        result.append(_strategy_row(cid, "H09", "PUT", "DISCOVERY", payload.get("episodes", 0), _metric(payload.get("horizons"), 60)))
+        result.append(_strategy_row(cid, "H09", "PUT", "DISCOVERY", payload.get("episodes", 0), _metric(payload.get("horizons"), 60), pnl_basis="SIM 1c · 60m"))
     h09p = h09.get("prospective", {}).get("by_candidate") or {}
     for cid, payload in h09p.items():
-        result.append(_strategy_row(cid, "H09", "PUT", "PROSPECTIVE", payload.get("episodes", 0), _metric(payload.get("horizons"), 60)))
+        result.append(_strategy_row(cid, "H09", "PUT", "PROSPECTIVE", payload.get("episodes", 0), _metric(payload.get("horizons"), 60), pnl_basis="SIM 1c · 60m"))
     multi = _load(a / "MULTISYMBOL_DISCOVERY_V01.json", {})
     candidates = {c.get("id"): c for c in multi.get("candidates") or []}
     for cid, payload in (multi.get("discovery", {}).get("by_candidate") or {}).items():
-        result.append(_strategy_row(cid, "Multi-Symbol", candidates.get(cid, {}).get("side"), "DISCOVERY", payload.get("episodes", 0), _metric(payload.get("horizons"), 30)))
+        result.append(_strategy_row(cid, "Multi-Symbol", candidates.get(cid, {}).get("side"), "DISCOVERY", payload.get("episodes", 0), _metric(payload.get("horizons"), 30), pnl_basis="SIM 1c · 30m"))
     multip = _load(a / "MULTISYMBOL_PROSPECTIVE_V01.json", {})
     for cid, payload in (multip.get("summary", {}).get("by_candidate") or {}).items():
-        result.append(_strategy_row(cid, "Multi-Symbol", candidates.get(cid, {}).get("side"), "PROSPECTIVE", payload.get("episodes", 0), _metric(payload.get("horizons"), 30)))
+        result.append(_strategy_row(cid, "Multi-Symbol", candidates.get(cid, {}).get("side"), "PROSPECTIVE", payload.get("episodes", 0), _metric(payload.get("horizons"), 30), pnl_basis="SIM 1c · 30m"))
     return result
 
 
