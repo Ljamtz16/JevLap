@@ -27,19 +27,20 @@ function install(){
    <button type="button" id="or-refresh">Actualizar</button>
   </div>
   <p id="or-health" class="muted" role="status">Cargando Options Research…</p>
+  <div class="card" style="margin-bottom:20px;border-width:2px"><h2>META ALPACA <small>· cuenta Paper dedicada · Meta + TTT + Ranking</small></h2><div class="stats" id="or-meta-alpaca-stats" style="margin-bottom:14px"></div><p id="or-meta-alpaca-status" class="muted"></p><div class="grid"><div><h3>Posición actual</h3><div id="or-meta-alpaca-position" class="table"></div></div><div><h3>Último trade</h3><div id="or-meta-alpaca-last" class="table"></div></div></div></div>
+  <div class="card" style="margin-bottom:20px"><h2>Cadena operativa <small>· Meta → TTT → Portfolio → Alpaca</small></h2><div class="stats" id="or-flow-stats"></div><p id="or-flow-status" class="muted"></p></div>
   <div class="stats" id="or-stats"></div>
   <div class="grid" style="margin-bottom:20px">
-   <div class="card"><h2>META LIVE <small>· ACCEPT / WAIT / BLOCK · sólo shadow</small></h2><div class="stats" id="or-meta-stats" style="margin-bottom:14px"></div><p id="or-meta-context" class="muted"></p><div id="or-meta-live" class="table"></div></div>
-   <div class="card"><h2>TTT / Hysteresis <small>· Signal Episode Engine</small></h2><p class="muted">H01 confirma la primera señal limpia; H09/Multi requieren persistencia de activaciones. Hysteresis nunca sobreescribe un BLOCK/WAIT de Meta.</p><div id="or-episodes" class="table"></div></div>
+   <div class="card"><h2>META LIVE <small>· ACCEPT / WAIT / BLOCK · últimas 12</small></h2><div class="stats" id="or-meta-stats" style="margin-bottom:14px"></div><p id="or-meta-context" class="muted"></p><div id="or-meta-live" class="table"></div></div>
+   <div class="card"><h2>TTT / Hysteresis <small>· últimas 12</small></h2><p class="muted">H01 confirma la primera señal limpia; H09/Multi requieren persistencia. Hysteresis nunca sobreescribe un BLOCK/WAIT de Meta.</p><div id="or-episodes" class="table"></div></div>
   </div>
-  <div class="card" style="margin-bottom:20px"><h2>META ALPACA <small>· cuenta Paper dedicada · Meta + TTT + Ranking</small></h2><div class="stats" id="or-meta-alpaca-stats" style="margin-bottom:14px"></div><p id="or-meta-alpaca-status" class="muted"></p><div class="grid"><div><h3>Posición actual</h3><div id="or-meta-alpaca-position" class="table"></div></div><div><h3>Último trade</h3><div id="or-meta-alpaca-last" class="table"></div></div></div></div>
   <div class="card" style="margin-bottom:20px"><h2>Resultados por estrategia <small>· discovery, prospectivo y paper separados</small></h2><div id="or-strategies" class="table"></div></div>
   <div class="grid">
    <div class="card"><h2>Jev frente a Options Research</h2><div id="or-groups" class="table"></div></div>
    <div class="card"><h2>Resultados por confianza Jev</h2><div id="or-confidence" class="table"></div></div>
   </div>
   <div class="card" style="margin-top:20px"><h2>Resultados por activo</h2><div id="or-symbols" class="table"></div></div>
-  <div class="card" style="margin-top:20px"><h2>Coincidencias por señal <small>· ventana temporal ±90 s, mismo activo</small></h2><div id="or-signals" class="table"></div></div>
+  <details class="card" style="margin-top:20px"><summary><strong>Coincidencias por señal</strong> <small>· historial detallado · ventana ±90 s</small></summary><p class="muted">Cerrado por defecto para mantener la vista operativa compacta. Ábrelo cuando necesites auditar señal por señal.</p><div id="or-signals" class="table"></div></details>
   <div class="card" style="margin-top:20px"><h2>H09 PUT · H09A vs H09B</h2><div id="or-h09" class="table"></div><p class="muted">H09 sigue SHADOW_ONLY. El retorno a 60m y TP10-before-SL10 se muestran por separado porque una buena dirección puede tocar el stop primero.</p></div>
   <div class="card" style="margin-top:20px"><h2>Multi-Symbol · familias de investigación</h2><div id="or-multi" class="table"></div><p class="muted">Las diferencias retrospectivas por activo son discovery. Ningún candidato se promueve automáticamente a Alpaca.</p></div>`;
  document.querySelector('main').insertBefore(section,q('setup'));
@@ -82,10 +83,15 @@ function renderMetaLive(){
  const counts={ACCEPT:0,WAIT:0,BLOCK:0}; rows.forEach(r=>{if(counts[r.decision]!=null)counts[r.decision]++});
  q('or-meta-stats').innerHTML=[['ACCEPT',counts.ACCEPT],['WAIT',counts.WAIT],['BLOCK',counts.BLOCK],['TTT confirmados',episodes.filter(r=>String(r.ttt_state||'').startsWith('CONFIRMED')).length]].map(([k,v])=>`<div class="card" style="padding:12px"><small>${esc(k)}</small><div class="value" style="font-size:22px">${esc(v)}</div></div>`).join('');
  const ctx=meta.latest_context||{};
- q('or-meta-context').textContent=meta.version?`Meta ${meta.mode||'—'} · contexto ${ctx.market_regime||'UNKNOWN'} · SPY ${pct(ctx.spy_from_open)} · QQQ ${pct(ctx.qqq_from_open)} · IWM ${pct(ctx.iwm_from_open)} · VIX ${pct(ctx.vix_change_pct)} · broker OFF`:'Meta Live todavía no ha generado estado.';
- q('or-meta-live').innerHTML=rows.length?table(['Hora','Activo','Fuente','Estrategia','Lado','Meta','Episodio','Persistencia','Régimen','Razones'],rows.slice().reverse().map(r=>{const reasons=[...(r.block_reasons||[]),...(r.wait_reasons||[])].join(' · ')||'PASS';return `<tr><td>${esc(r.time)}</td><td>${esc(r.symbol)}</td><td>${esc(r.source)}</td><td>${esc(r.strategy)}</td><td>${esc(r.side)}</td><td><strong class="${r.decision==='ACCEPT'?'up':r.decision==='BLOCK'?'down':''}">${esc(r.decision)}</strong></td><td>${esc(r.episode_id)}</td><td>${esc(r.persistence_observations??'—')} obs · ${esc(r.persistence_minutes??'—')}m</td><td>${esc(r.market_regime)}</td><td>${esc(reasons)}</td></tr>`;})):'<p class="muted">Sin decisiones Meta Live para esta selección desde el arranque prospectivo.</p>';
- q('or-episodes').innerHTML=episodes.length?table(['Última obs.','Activo','Fuente','Lado','Episodio','Activaciones','Meta','TTT','Hysteresis','Shadow','Autorizaría 1 entrada'],episodes.slice().reverse().map(r=>`<tr><td>${esc(r.last_observation_at)}</td><td>${esc(r.symbol)}</td><td>${esc(r.source)}</td><td>${esc(r.side)}</td><td>${esc(r.episode_id)}</td><td>${esc((r.activation_times||[]).length)}</td><td>${esc(r.latest_meta_decision)}</td><td>${esc(r.ttt_state)}</td><td>${esc(r.hysteresis_state)}</td><td>${esc(r.shadow_decision)}</td><td>${r.authorization_emitted?'Sí':'No'}</td></tr>`)):'<p class="muted">Sin episodios TTT/Hysteresis todavía. El servicio empezó sin replay histórico.</p>';
+ q('or-meta-context').textContent=meta.version?`Meta ${meta.mode||'—'} · contexto ${ctx.market_regime||'UNKNOWN'} · SPY ${pct(ctx.spy_from_open)} · QQQ ${pct(ctx.qqq_from_open)} · IWM ${pct(ctx.iwm_from_open)} · VIX ${pct(ctx.vix_change_pct)} · decision layer shadow`:'Meta Live todavía no ha generado estado.';
+ const metaHeaders=['Hora','Activo','Fuente','Estrategia','Lado','Meta','Episodio','Persistencia','Régimen','Razones'];
+ const metaRows=rows.slice().reverse().map(r=>{const reasons=[...(r.block_reasons||[]),...(r.wait_reasons||[])].join(' · ')||'PASS';return `<tr><td>${esc(r.time)}</td><td>${esc(r.symbol)}</td><td>${esc(r.source)}</td><td>${esc(r.strategy)}</td><td>${esc(r.side)}</td><td><strong class="${r.decision==='ACCEPT'?'up':r.decision==='BLOCK'?'down':''}">${esc(r.decision)}</strong></td><td>${esc(r.episode_id)}</td><td>${esc(r.persistence_observations??'—')} obs · ${esc(r.persistence_minutes??'—')}m</td><td>${esc(r.market_regime)}</td><td>${esc(reasons)}</td></tr>`;});
+ q('or-meta-live').innerHTML=metaRows.length?table(metaHeaders,metaRows.slice(0,12))+(metaRows.length>12?`<details style="margin-top:10px"><summary>Ver todas las decisiones Meta (${metaRows.length})</summary>${table(metaHeaders,metaRows)}</details>`:''):'<p class="muted">Sin decisiones Meta Live para esta selección desde el arranque prospectivo.</p>';
+ const episodeHeaders=['Última obs.','Activo','Fuente','Lado','Episodio','Activaciones','Meta','TTT','Hysteresis','Shadow','Autorizaría 1 entrada'];
+ const episodeRows=episodes.slice().reverse().map(r=>`<tr><td>${esc(r.last_observation_at)}</td><td>${esc(r.symbol)}</td><td>${esc(r.source)}</td><td>${esc(r.side)}</td><td>${esc(r.episode_id)}</td><td>${esc((r.activation_times||[]).length)}</td><td>${esc(r.latest_meta_decision)}</td><td>${esc(r.ttt_state)}</td><td>${esc(r.hysteresis_state)}</td><td>${esc(r.shadow_decision)}</td><td>${r.authorization_emitted?'Sí':'No'}</td></tr>`);
+ q('or-episodes').innerHTML=episodeRows.length?table(episodeHeaders,episodeRows.slice(0,12))+(episodeRows.length>12?`<details style="margin-top:10px"><summary>Ver todos los episodios TTT (${episodeRows.length})</summary>${table(episodeHeaders,episodeRows)}</details>`:''):'<p class="muted">Sin episodios TTT/Hysteresis todavía. El servicio empezó sin replay histórico.</p>';
 }
+
 function renderMetaAlpaca(){
  const root=payload?.meta_alpaca||{},broker=root.broker||{},portfolio=root.portfolio||{},halt=portfolio.daily_halt||{};
  const dailyPnl=portfolio.daily_pnl;
@@ -107,6 +113,30 @@ function renderMetaAlpaca(){
  q('or-meta-alpaca-last').innerHTML=t?table(['Contrato','Estado','Entrada','Salida','Resultado','P&L'],[`<tr><td>${esc(t.contract)}</td><td>${esc(t.status)}</td><td>${esc(t.local_entry_time||t.entry_time)}</td><td>${esc(t.local_exit_time||t.exit_time)}</td><td>${esc(t.broker_exit_reason||t.local_exit_reason||t.exit_reason)}</td><td>${signed(t.broker_gross_pnl??t.local_net_pnl??t.net_pnl)}</td></tr>`]):'<p class="muted">Todavía no hay trades Meta ejecutados.</p>';
 }
 
+function renderOperationalFlow(){
+ const meta=payload?.meta_live?.meta||{},engine=payload?.meta_live?.episode_engine||{},ma=payload?.meta_alpaca||{},broker=ma.broker||{},portfolio=ma.portfolio||{};
+ const decisions=meta.decisions||[],episodes=engine.episodes||[];
+ const lastMeta=decisions.length?decisions[decisions.length-1]:null;
+ const confirmed=[...episodes].reverse().find(r=>String(r.ttt_state||'').startsWith('CONFIRMED'))||null;
+ const halt=portfolio.daily_halt||{};
+ const portfolioState=halt.triggered?'HALTED':(portfolio.open_positions||[]).length?'OPEN':'READY';
+ const brokerState=broker.submit_orders&&broker.status==='ACTIVE'?'ARMED':broker.status||'OFF';
+ const regime=(meta.latest_context||{}).market_regime||'UNKNOWN';
+ q('or-flow-stats').innerHTML=[
+  ['Régimen',regime],
+  ['Último Meta',lastMeta?`${lastMeta.decision} · ${lastMeta.symbol||'—'} ${lastMeta.side||''}`:'—'],
+  ['Último TTT',confirmed?`${confirmed.symbol||'—'} ${confirmed.side||''} · CONFIRMED`:'—'],
+  ['Portfolio',portfolioState],
+  ['Alpaca',brokerState]
+ ].map(([k,v])=>`<div class="card" style="padding:12px"><small>${esc(k)}</small><div class="value" style="font-size:20px">${esc(v)}</div></div>`).join('');
+ const bits=[];
+ if(lastMeta)bits.push(`Meta: ${lastMeta.strategy||lastMeta.source||'—'} · ${lastMeta.decision}`);
+ if(confirmed)bits.push(`TTT: ${confirmed.episode_id||'confirmado'}`);
+ bits.push(`Portfolio: ${(portfolio.open_positions||[]).length} abierta(s), ${portfolio.closed_trades||0} cerrada(s)`);
+ bits.push(`Alpaca: ${(broker.positions||[]).length} posición(es), ${broker.tracked_trades||0} trade(s) trackeado(s)`);
+ q('or-flow-status').textContent=bits.join(' · ');
+}
+
 function render(){
  if(!payload)return;
  const strategies=visibleStrategies(),signals=visibleSignals();
@@ -118,6 +148,7 @@ function render(){
  q('or-health').textContent=`${payload.day} · bridge ${payload.version} · read-only · broker actions OFF · actualizado ${payload.generated_at_utc}`;
  renderMetaLive();
  renderMetaAlpaca();
+ renderOperationalFlow();
  q('or-strategies').innerHTML=table(['Estrategia','Fuente','Evidencia','Lado','Episodios/entradas','Cerradas','Abiertas','Win rate','Retorno medio','TP10 antes SL10','P&L'],strategies.map(r=>`<tr>${[
   r.strategy,r.source,r.evidence,r.side,r.episodes??r.entries,r.closed,r.open
  ].map(v=>`<td>${esc(v)}</td>`).join('')}<td>${pct(r.win_rate)}</td><td>${ret(r.mean_return)}</td><td>${pct(r.tp10_before_sl10_rate)}</td><td>${signed(r.pnl)}</td></tr>`));
