@@ -314,6 +314,39 @@ def _slim_summary(section):
     return {"episodes": episodes, "by_candidate": section.get("by_candidate", {})}
 
 
+def _live_shadow_bundle(options_root, day):
+    a = Path(options_root) / "artifacts/intraday"
+    meta = _load(a / "META_DECISION_LIVE_STATE_V01.json", {})
+    episode = _load(a / "SIGNAL_EPISODE_LIVE_STATE_V01.json", {})
+
+    def row_day(row):
+        return str(row.get("day") or row.get("decision_date") or row.get("market_date") or row.get("time") or row.get("started_at") or "")[:10]
+
+    decisions = [r for r in (meta.get("recent_decisions") or []) if not day or row_day(r) == day]
+    decisions = sorted(decisions, key=lambda r: str(r.get("time") or ""))[-150:]
+    all_episodes = list((episode.get("active_episodes") or {}).values()) + list(episode.get("recent_episodes") or [])
+    episodes = [r for r in all_episodes if not day or row_day(r) == day]
+    episodes = sorted(episodes, key=lambda r: str(r.get("last_observation_at") or r.get("started_at") or ""))[-150:]
+
+    counts = {name: sum(r.get("decision") == name for r in decisions) for name in ("ACCEPT", "WAIT", "BLOCK")}
+    ttt_confirmed = sum(str(r.get("ttt_state") or "").startswith("CONFIRMED") for r in episodes)
+    would_authorize = sum(bool(r.get("authorization_emitted")) for r in episodes)
+    return {
+        "meta": {
+            "version": meta.get("version"), "mode": meta.get("mode"), "live_start_utc": meta.get("live_start_utc"),
+            "updated_at_utc": meta.get("updated_at_utc"), "auto_apply": meta.get("auto_apply", False),
+            "broker_orders_enabled": meta.get("broker_orders_enabled", False), "latest_context": meta.get("latest_context") or {},
+            "counters": meta.get("counters") or {}, "session_counts": counts, "decisions": decisions,
+        },
+        "episode_engine": {
+            "version": episode.get("version"), "mode": episode.get("mode"), "live_start_utc": episode.get("live_start_utc"),
+            "updated_at_utc": episode.get("updated_at_utc"), "auto_apply": episode.get("auto_apply", False),
+            "broker_orders_enabled": episode.get("broker_orders_enabled", False), "counters": episode.get("counters") or {},
+            "ttt_confirmed": ttt_confirmed, "would_authorize": would_authorize, "episodes": episodes,
+        },
+    }
+
+
 def build_options_research(db_path, options_root, day=None):
     day = day or _today_ny()
     live = _normalize_live(options_root, day)
@@ -332,6 +365,7 @@ def build_options_research(db_path, options_root, day=None):
         "live_signals": live,
         "comparison": {"rows": comparisons, "groups": _group_summary(comparisons)},
         "confidence": _confidence(comparisons),
+        "meta_live": _live_shadow_bundle(options_root, day),
         "h09": {
             "discovery_cutoff": h09.get("discovery_cutoff"),
             "prospective_start_after": h09.get("prospective_start_after"),

@@ -28,6 +28,10 @@ function install(){
   </div>
   <p id="or-health" class="muted" role="status">Cargando Options Research…</p>
   <div class="stats" id="or-stats"></div>
+  <div class="grid" style="margin-bottom:20px">
+   <div class="card"><h2>META LIVE <small>· ACCEPT / WAIT / BLOCK · sólo shadow</small></h2><div class="stats" id="or-meta-stats" style="margin-bottom:14px"></div><p id="or-meta-context" class="muted"></p><div id="or-meta-live" class="table"></div></div>
+   <div class="card"><h2>TTT / Hysteresis <small>· Signal Episode Engine</small></h2><p class="muted">H01 confirma la primera señal limpia; H09/Multi requieren persistencia de activaciones. Hysteresis nunca sobreescribe un BLOCK/WAIT de Meta.</p><div id="or-episodes" class="table"></div></div>
+  </div>
   <div class="card" style="margin-bottom:20px"><h2>Resultados por estrategia <small>· discovery, prospectivo y paper separados</small></h2><div id="or-strategies" class="table"></div></div>
   <div class="grid">
    <div class="card"><h2>Jev frente a Options Research</h2><div id="or-groups" class="table"></div></div>
@@ -64,6 +68,23 @@ function visibleSignals(){
 function table(headers,rows){
  return `<table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
 }
+function metaSourceMatches(row){
+ const filter=q('or-source').value; if(!filter)return true;
+ const map={'Frozen':'H01','H09':'H09','Multi-Symbol':'MULTI'};
+ return map[filter]?row.source===map[filter]:false;
+}
+function renderMetaLive(){
+ const bundle=payload?.meta_live||{},meta=bundle.meta||{},engine=bundle.episode_engine||{};
+ const symbol=q('or-symbol').value,side=q('or-side').value;
+ const rows=(meta.decisions||[]).filter(r=>(!symbol||r.symbol===symbol)&&(!side||r.side===side)&&metaSourceMatches(r));
+ const episodes=(engine.episodes||[]).filter(r=>(!symbol||r.symbol===symbol)&&(!side||r.side===side)&&metaSourceMatches(r));
+ const counts={ACCEPT:0,WAIT:0,BLOCK:0}; rows.forEach(r=>{if(counts[r.decision]!=null)counts[r.decision]++});
+ q('or-meta-stats').innerHTML=[['ACCEPT',counts.ACCEPT],['WAIT',counts.WAIT],['BLOCK',counts.BLOCK],['TTT confirmados',episodes.filter(r=>String(r.ttt_state||'').startsWith('CONFIRMED')).length]].map(([k,v])=>`<div class="card" style="padding:12px"><small>${esc(k)}</small><div class="value" style="font-size:22px">${esc(v)}</div></div>`).join('');
+ const ctx=meta.latest_context||{};
+ q('or-meta-context').textContent=meta.version?`Meta ${meta.mode||'—'} · contexto ${ctx.market_regime||'UNKNOWN'} · SPY ${pct(ctx.spy_from_open)} · QQQ ${pct(ctx.qqq_from_open)} · IWM ${pct(ctx.iwm_from_open)} · VIX ${pct(ctx.vix_change_pct)} · broker OFF`:'Meta Live todavía no ha generado estado.';
+ q('or-meta-live').innerHTML=rows.length?table(['Hora','Activo','Fuente','Estrategia','Lado','Meta','Episodio','Persistencia','Régimen','Razones'],rows.slice().reverse().map(r=>{const reasons=[...(r.block_reasons||[]),...(r.wait_reasons||[])].join(' · ')||'PASS';return `<tr><td>${esc(r.time)}</td><td>${esc(r.symbol)}</td><td>${esc(r.source)}</td><td>${esc(r.strategy)}</td><td>${esc(r.side)}</td><td><strong class="${r.decision==='ACCEPT'?'up':r.decision==='BLOCK'?'down':''}">${esc(r.decision)}</strong></td><td>${esc(r.episode_id)}</td><td>${esc(r.persistence_observations??'—')} obs · ${esc(r.persistence_minutes??'—')}m</td><td>${esc(r.market_regime)}</td><td>${esc(reasons)}</td></tr>`;})):'<p class="muted">Sin decisiones Meta Live para esta selección desde el arranque prospectivo.</p>';
+ q('or-episodes').innerHTML=episodes.length?table(['Última obs.','Activo','Fuente','Lado','Episodio','Activaciones','Meta','TTT','Hysteresis','Shadow','Autorizaría 1 entrada'],episodes.slice().reverse().map(r=>`<tr><td>${esc(r.last_observation_at)}</td><td>${esc(r.symbol)}</td><td>${esc(r.source)}</td><td>${esc(r.side)}</td><td>${esc(r.episode_id)}</td><td>${esc((r.activation_times||[]).length)}</td><td>${esc(r.latest_meta_decision)}</td><td>${esc(r.ttt_state)}</td><td>${esc(r.hysteresis_state)}</td><td>${esc(r.shadow_decision)}</td><td>${r.authorization_emitted?'Sí':'No'}</td></tr>`)):'<p class="muted">Sin episodios TTT/Hysteresis todavía. El servicio empezó sin replay histórico.</p>';
+}
 function render(){
  if(!payload)return;
  const strategies=visibleStrategies(),signals=visibleSignals();
@@ -73,6 +94,7 @@ function render(){
   ['Señales Options · sesión',payload.live_signals.length],['Coincidencias Jev',matched],['Direcciones opuestas',opposed],['Shadow prospectivo',prospectives]
  ].map(([k,v])=>`<div class="card"><small>${esc(k)}</small><div class="value">${esc(v)}</div></div>`).join('');
  q('or-health').textContent=`${payload.day} · bridge ${payload.version} · read-only · broker actions OFF · actualizado ${payload.generated_at_utc}`;
+ renderMetaLive();
  q('or-strategies').innerHTML=table(['Estrategia','Fuente','Evidencia','Lado','Episodios/entradas','Cerradas','Abiertas','Win rate','Retorno medio','TP10 antes SL10','P&L'],strategies.map(r=>`<tr>${[
   r.strategy,r.source,r.evidence,r.side,r.episodes??r.entries,r.closed,r.open
  ].map(v=>`<td>${esc(v)}</td>`).join('')}<td>${pct(r.win_rate)}</td><td>${ret(r.mean_return)}</td><td>${pct(r.tp10_before_sl10_rate)}</td><td>${signed(r.pnl)}</td></tr>`));
