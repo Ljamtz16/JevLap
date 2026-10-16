@@ -51,6 +51,45 @@ def _metric(horizons, horizon):
     return (horizons or {}).get(str(horizon), {})
 
 
+def _as_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _max_drawdown_pnl(pnls):
+    if not pnls:
+        return None
+    equity = peak = worst = 0.0
+    for pnl in pnls:
+        equity += pnl
+        peak = max(peak, equity)
+        worst = min(worst, equity - peak)
+    return worst
+
+
+def _paper_risk_metrics(rows):
+    pnls, mfe_pnl, mae_pnl = [], [], []
+    for row in rows:
+        pnl = _as_float(row.get("pnl"))
+        if pnl is not None:
+            pnls.append(pnl)
+        entry = _as_float(row.get("entry_ask"))
+        qty = _as_float(row.get("quantity")) or 1.0
+        mfe = _as_float(row.get("mfe"))
+        mae = _as_float(row.get("mae"))
+        if entry is not None and entry > 0 and mfe is not None:
+            mfe_pnl.append(entry * 100.0 * qty * mfe)
+        if entry is not None and entry > 0 and mae is not None:
+            mae_pnl.append(entry * 100.0 * qty * mae)
+    return {
+        "mean_mfe_pnl": sum(mfe_pnl) / len(mfe_pnl) if mfe_pnl else None,
+        "mean_mae_pnl": sum(mae_pnl) / len(mae_pnl) if mae_pnl else None,
+        "max_drawdown_pnl": _max_drawdown_pnl(pnls),
+    }
+
+
 def _strategy_row(strategy, source, side, evidence, episodes=0, metrics=None,
                   entries=None, closed=None, opened=None, pnl=None, wins=None, pnl_basis=None):
     metrics = metrics or {}
@@ -71,6 +110,9 @@ def _strategy_row(strategy, source, side, evidence, episodes=0, metrics=None,
         "mean_mfe": metrics.get("mean_mfe"), "mean_mae": metrics.get("mean_mae"),
         "tp10_before_sl10_rate": metrics.get("tp10_before_sl10_rate"),
         "pnl": pnl, "mean_pnl": mean_pnl, "pnl_n": metrics.get("pnl_1_contract_n") or closed,
+        "mean_mfe_pnl": metrics.get("mean_mfe_pnl") if metrics.get("mean_mfe_pnl") is not None else metrics.get("mean_mfe_pnl_1_contract"),
+        "mean_mae_pnl": metrics.get("mean_mae_pnl") if metrics.get("mean_mae_pnl") is not None else metrics.get("mean_mae_pnl_1_contract"),
+        "max_drawdown_pnl": metrics.get("max_drawdown_pnl") if metrics.get("max_drawdown_pnl") is not None else metrics.get("max_drawdown_pnl_1_contract"),
         "pnl_basis": pnl_basis,
     }
 
@@ -140,6 +182,8 @@ def _normalize_live(options_root, day):
             "side": _side(item.get("side")), "source": "Frozen", "strategy": item.get("hypothesis"),
             "contract": item.get("contract"), "status": item.get("status"),
             "pnl": item.get("net_pnl"), "result": item.get("exit_reason"),
+            "entry_ask": item.get("entry_ask"), "quantity": item.get("quantity") or 1,
+            "mfe": item.get("mfe"), "mae": item.get("mae"),
             "evidence": "PAPER", "broker_order": False,
         })
     put = _load(a / "PUT_CONFIRM_LIVE_STATE_V02.json", {})
@@ -153,6 +197,8 @@ def _normalize_live(options_root, day):
             "symbol": _root_from_contract(item.get("contract")) or "SPY", "side": "PUT",
             "source": "PUT v0.2", "strategy": "PUT_CONFIRM_V02", "contract": item.get("contract"),
             "status": close.get("status", item.get("paper_status")), "pnl": close.get("pnl"),
+            "entry_ask": item.get("entry_ask"), "quantity": item.get("quantity") or 1,
+            "mfe": item.get("mfe"), "mae": item.get("mae"),
             "result": close.get("result"), "evidence": "PROSPECTIVE", "broker_order": True,
         })
     for filename, source in [
@@ -182,9 +228,10 @@ def _strategy_results(options_root, day, live_rows):
             grouped[(row["strategy"], row["source"], row["side"])].append(row)
     for (strategy, source, side), rows in grouped.items():
         closed = [r for r in rows if r.get("status") == "CLOSED"]
+        risk_metrics = _paper_risk_metrics(closed)
         result.append(_strategy_row(
             strategy, source, side, "PAPER" if source == "Frozen" else "PROSPECTIVE",
-            episodes=len(rows), entries=len(rows), closed=len(closed),
+            episodes=len(rows), metrics=risk_metrics, entries=len(rows), closed=len(closed),
             opened=len(rows) - len(closed), pnl=sum(float(r.get("pnl") or 0) for r in closed),
             wins=sum(1 for r in closed if float(r.get("pnl") or 0) > 0),
             pnl_basis="PAPER local",
