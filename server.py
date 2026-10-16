@@ -4,6 +4,7 @@ from urllib.parse import urlsplit, parse_qs
 from pathlib import Path
 from http.server import ThreadingHTTPServer as HTTPServer, BaseHTTPRequestHandler
 from engine import CONFIG, decide, evaluate
+from session_results import index_results,results as session_results,sessions,scope_local_state,day_bounds,today
 from options_research import build_options_research
 
 from credentials import load as load_credentials
@@ -15,6 +16,7 @@ SYSTEM_ROOT=Path(os.getenv('OPTIONS_SYSTEM_ROOT',str(ROOT.parent/'options-system
 DB.parent.mkdir(exist_ok=True)
 with closing(sqlite3.connect(DB)) as db, db:
     db.execute('CREATE TABLE IF NOT EXISTS decisions(id TEXT PRIMARY KEY, body TEXT NOT NULL)')
+    index_results(db)
 
 class Handler(BaseHTTPRequestHandler):
     def send(self, value, code=200):
@@ -23,6 +25,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path=urlsplit(self.path).path
         query=parse_qs(urlsplit(self.path).query)
+        try:
+            if path=='/api/sessions':
+                with closing(sqlite3.connect(DB,timeout=20)) as db, db:
+                    index_results(db)
+                    return self.send(sessions(db))
+            if path=='/api/results':
+                with closing(sqlite3.connect(DB,timeout=20)) as db, db:
+                    index_results(db)
+                    value=session_results(db,query)
+                value.update(jev_configured=bool(os.getenv('TYPESAFE_API_KEY')),broker_mode='ALPACA_PAPER',trading_threshold=CONFIG['threshold'])
+                return self.send(value)
+        except (ValueError,TypeError) as exc:
+            return self.send({'error':str(exc)},400)
         if path=='/api/options-research':
             day=(query.get('day') or [today()])[0]
             if day in ('today','__today'):day=today()
@@ -32,16 +47,18 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 return self.send({'error':f'Options Research unavailable: {type(exc).__name__}: {exc}'},500)
             return self.send(value)
-        if self.path=='/api/local-paper':
+        if path=='/api/local-paper':
             path=SYSTEM_ROOT/'artifacts/intraday/PAPER_TRADING_LIVE_STATE_V01.json'
             value=json.loads(path.read_text()) if path.exists() else {'status':'NOT_STARTED'}
+            try:value=scope_local_state(value,query)
+            except ValueError:return self.send({'error':'Fecha no válida'},400)
             return self.send(dict(state=value,mode='LIVE_PAPER',account_kind='LOCAL_SIMULATION'))
         if self.path=='/api/analysis':
             def report(path):
                 return json.loads(path.read_text()) if path.exists() else {'status':'NOT_GENERATED','auto_apply':False}
             return self.send(dict(calibration=report(ROOT/'data/calibration-analysis.json'),
                                   entry_controls=report(SYSTEM_ROOT/'artifacts/intraday/ENTRY_CONTROLS_ANALYSIS_V01.json')))
-        if self.path=='/api/paper':
+        if path=='/api/paper':
             status_path=ROOT/'data/paper-status.json'
             status=json.loads(status_path.read_text(encoding='utf-8')) if status_path.exists() else {'enabled':False,'status':'NOT_STARTED'}
             status['quote_feed']=os.getenv('JEV_OPTIONS_FEED','opra')
@@ -49,7 +66,14 @@ class Handler(BaseHTTPRequestHandler):
             paper_db=ROOT/'data/paper.sqlite'
             if paper_db.exists():
                 with closing(sqlite3.connect(paper_db,timeout=20)) as db, db:
-                    for cid,body,broker,state,created in db.execute('SELECT * FROM intents ORDER BY created DESC LIMIT 100'):
+                    day=(query.get('day') or [today()])[0]
+                    if day in ('today','__today'):day=today()
+                    if day=='all':rows=db.execute('SELECT * FROM intents ORDER BY created DESC LIMIT 100')
+                    else:
+                        try:start,end=day_bounds(day)
+                        except ValueError:return self.send({'error':'Fecha no válida'},400)
+                        rows=db.execute('SELECT * FROM intents WHERE julianday(created)>=julianday(?) AND julianday(created)<julianday(?) ORDER BY created DESC LIMIT 100',(start,end))
+                    for cid,body,broker,state,created in rows:
                         history.append(dict(client_order_id=cid,request=json.loads(body),broker=None if not broker else json.loads(broker),state=state,created_at=created))
             status.update(mode='ALPACA_PAPER',account_kind='BROKER_PAPER')
             return self.send(dict(status=status,orders=history))
@@ -58,11 +82,6 @@ class Handler(BaseHTTPRequestHandler):
             with closing(sqlite3.connect(DB,timeout=20)) as db, db:
                 row=db.execute('SELECT body FROM decisions WHERE id=?',(ident,)).fetchone()
             return self.send(json.loads(row[0]) if row else {'error':'Decision not found'},200 if row else 404)
-        if self.path=='/api/results':
-            with closing(sqlite3.connect(DB,timeout=20)) as db, db:
-                # Full inputs and provider responses remain available on demand.
-                rows=[json.loads(r[0]) for r in db.execute("SELECT json_remove(body,'$.snapshot','$.request','$.raw') FROM decisions ORDER BY rowid DESC")]
-            return self.send(dict(rows=rows, jev_configured=bool(os.getenv('TYPESAFE_API_KEY')),broker_mode='ALPACA_PAPER', trading_threshold=CONFIG['threshold']))
         if path=='/options-research.js':
             self.send_response(200); self.send_header('Content-Type','application/javascript; charset=utf-8'); self.send_header('Cache-Control','no-store'); self.end_headers(); self.wfile.write((ROOT/'web/options-research.js').read_bytes()); return
         if self.path in ('/','/index.html'):
@@ -109,3 +128,4 @@ if __name__=='__main__':
         print(f'Jev Lab Tailscale: http://{tail_ip}:{port}',flush=True)
     print(f'Jev Lab local: http://127.0.0.1:{port} — estado del ejecutor en /api/paper',flush=True)
     HTTPServer(('127.0.0.1',port),Handler).serve_forever()
+

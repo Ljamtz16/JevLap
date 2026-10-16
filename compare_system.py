@@ -35,6 +35,8 @@ class Comparator:
         self.active = load_module(paths[2], 'comparison_rules').hypothesis_active
         self.previous = {}
         with closing(sqlite3.connect(self.db_path, timeout=30)) as db, db:
+            # Comparator is also used standalone in tests/research; fail safe on a fresh DB.
+            db.execute('CREATE TABLE IF NOT EXISTS decisions(id TEXT PRIMARY KEY,body TEXT NOT NULL)')
             db.execute('CREATE TABLE IF NOT EXISTS comparison_signals(timestamp TEXT,symbol TEXT,body TEXT,PRIMARY KEY(timestamp,symbol))')
             db.execute('CREATE TABLE IF NOT EXISTS comparison_consumed(path TEXT PRIMARY KEY)')
             db.execute('CREATE TABLE IF NOT EXISTS comparison_pending(id TEXT PRIMARY KEY)')

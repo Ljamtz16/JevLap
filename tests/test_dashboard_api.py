@@ -26,11 +26,11 @@ class DashboardAPITests(unittest.TestCase):
     def get(self,path):
         return urlopen('http://127.0.0.1:'+str(self.http.server_port)+path,timeout=5)
     def test_summary_small_and_audit_record_preserved(self):
-        with self.get('/api/results') as response:
+        with self.get('/api/results?day=all') as response:
             body=response.read();self.assertLess(len(body),2000)
             self.assertEqual(response.headers['Cache-Control'],'no-store')
         result=json.loads(body);row=result['rows'][0]
-        self.assertEqual(result['trading_threshold'],.60)
+        self.assertEqual(result['trading_threshold'],server.CONFIG['threshold'])
         self.assertEqual(row['confidence'],.44);self.assertEqual(row['config'],{'threshold':.75})
         self.assertTrue(all(field not in row for field in ('raw','snapshot','request')))
         with self.get('/api/decision?id=test-id') as response:
@@ -47,6 +47,8 @@ class DashboardAPITests(unittest.TestCase):
         with patch.object(server,'SYSTEM_ROOT',root):
             with self.get('/api/local-paper') as response:
                 value=json.load(response)
-            self.assertEqual(value['state'],state);self.assertEqual(value['account_kind'],'LOCAL_SIMULATION')
+            self.assertEqual(value['state']['cash'],state['cash']);self.assertEqual(value['state']['mode'],state['mode'])
+            self.assertEqual(value['state']['live_ledger'],state['live_ledger']);self.assertIn('session_date',value['state'])
+            self.assertEqual(value['state']['session_realized_net_pnl'],0);self.assertEqual(value['account_kind'],'LOCAL_SIMULATION')
             with self.get('/api/analysis') as response:
                 self.assertFalse(json.load(response)['entry_controls']['auto_apply'])

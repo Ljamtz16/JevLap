@@ -46,7 +46,6 @@ class ComparisonTests(unittest.TestCase):
         row=evaluate(state,decision,[]);row.update(snapshot=state,source_file='sample.json',comparison=None)
         signal=self.signal();signal['source_file']='sample.json'
         with closing(sqlite3.connect(self.c.db_path)) as db,db:
-            db.execute('CREATE TABLE decisions(id TEXT PRIMARY KEY,body TEXT)')
             db.execute('CREATE TABLE quotes(symbol TEXT,timestamp TEXT,bid REAL)')
             db.execute('INSERT INTO decisions VALUES(?,?)',(row['id'],json.dumps(row)))
             db.execute('INSERT INTO comparison_signals VALUES(?,?,?)',(row['timestamp'],row['symbol'],json.dumps(signal)))
