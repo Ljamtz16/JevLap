@@ -493,6 +493,21 @@ def _meta_alpaca_bundle(options_root):
         },
     }
 
+def _sl_first_recovery_bundle(options_root):
+    a = Path(options_root) / "artifacts/intraday"
+    data = _load(a / "SL_FIRST_RECOVERY_STUDY_V01.json", {})
+    return {
+        "version": data.get("version"),
+        "mode": data.get("mode"),
+        "available": bool(data),
+        "episode_count": data.get("episode_count", 0),
+        "evaluable_count": data.get("evaluable_count", 0),
+        "methodology": data.get("methodology") or [],
+        "by_strategy": data.get("by_strategy") or {},
+        "by_strategy_evidence": data.get("by_strategy_evidence") or {},
+    }
+
+
 def build_options_research(db_path, options_root, day=None):
     day = day or _today_ny()
     live = _normalize_live(options_root, day)
@@ -513,6 +528,7 @@ def build_options_research(db_path, options_root, day=None):
         "confidence": _confidence(comparisons),
         "meta_live": _live_shadow_bundle(options_root, day),
         "meta_alpaca": _meta_alpaca_bundle(options_root),
+        "sl_first_recovery": _sl_first_recovery_bundle(options_root),
         "h09": {
             "discovery_cutoff": h09.get("discovery_cutoff"),
             "prospective_start_after": h09.get("prospective_start_after"),

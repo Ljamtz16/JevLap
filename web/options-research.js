@@ -36,6 +36,7 @@ function install(){
    <div class="card"><h2>TTT / Hysteresis <small>· últimas 12</small></h2><p class="muted">H01 confirma la primera señal limpia; H09/Multi requieren persistencia. Hysteresis nunca sobreescribe un BLOCK/WAIT de Meta.</p><div id="or-episodes" class="table"></div></div>
   </div>
   <div class="card" style="margin-bottom:20px"><h2>Resultados por estrategia <small>· discovery, prospectivo y paper separados</small></h2><div id="or-strategies" class="table"></div><p class="muted">PAPER local = métricas de la simulación ejecutada. SIM 1c = 1 contrato, entrada al ask y salida según el retorno terminal de la ventana indicada (H09 60m; Multi 30m), sin slippage, comisiones ni restricciones de cartera. MFE/MAE son la excursión favorable/adversa media en dólares; Máx DD es el drawdown de la secuencia de P&L de esa fila. n indica episodios con datos completos.</p></div>
+  <div class="card" style="margin-bottom:20px"><h2>SL-FIRST RECOVERY <small>· ¿el SL10 es pérdida o pullback de entrada?</small></h2><p class="muted">Acumulado multi-sesión con reconstrucción temporal real del mismo contrato. SL→+10/+20/+30 sólo cuenta objetivos alcanzados después del primer -10%. Research/shadow: no modifica Meta Alpaca.</p><div id="or-sl-recovery" class="table"></div><details style="margin-top:12px"><summary><strong>Delayed Entry Replay</strong> · Original vs Touch10 vs Reclaim8 vs Rebound5</summary><div id="or-delayed-entry" class="table" style="margin-top:10px"></div><p class="muted">Todas las variantes salen al horizonte original para aislar el timing de entrada. La entrada usa ask contemporáneo y la salida/valoración usa bid.</p></details></div>
   <div class="grid">
    <div class="card"><h2>Jev frente a Options Research</h2><div id="or-groups" class="table"></div></div>
    <div class="card"><h2>Resultados por confianza Jev</h2><div id="or-confidence" class="table"></div></div>
@@ -138,6 +139,28 @@ function renderOperationalFlow(){
  q('or-flow-status').textContent=bits.join(' · ');
 }
 
+function renderSlFirstRecovery(){
+ const root=payload?.sl_first_recovery||{},parts=root.by_strategy_evidence||{};
+ const strategyFilter=q('or-source').value,evidenceFilter=q('or-evidence').value;
+ const sourceMap={'H01':'Frozen','H09':'H09','Multi-Symbol':'Multi-Symbol'};
+ const rows=[];
+ Object.entries(parts).forEach(([strategy,evs])=>Object.entries(evs||{}).forEach(([e,x])=>{
+  const source=strategy.startsWith('H09')?'H09':strategy.startsWith('MS')?'Multi-Symbol':'H01';
+  if(strategyFilter&&sourceMap[source]!==strategyFilter)return;
+  if(evidenceFilter&&e!==evidenceFilter&&!(evidenceFilter==='PAPER'&&e==='FROZEN_TRACKER'))return;
+  rows.push(`<tr><td>${esc(strategy)}</td><td>${esc(e)}</td><td>${x.evaluable??0}</td><td>${x.touched_sl10??0} (${pct(x.touched_sl10_rate)})</td><td>${x.sl10_then_10??0} (${pct(x.sl10_then_10_rate)})</td><td>${x.sl10_then_20??0} (${pct(x.sl10_then_20_rate)})</td><td>${x.sl10_then_30??0} (${pct(x.sl10_then_30_rate)})</td><td>${ret(x.median_post_sl_min_return)}</td><td>${x.median_sl_to_10_minutes==null?'—':num(x.median_sl_to_10_minutes)+'m'}</td></tr>`);
+ }));
+ q('or-sl-recovery').innerHTML=rows.length?table(['Estrategia','Evidencia','Episodios','Tocó SL10','SL→+10','SL→+20','SL→+30','Mínimo post-SL mediano','SL→+10 mediano'],rows):'<p class="muted">Sin estudio SL-first para estos filtros.</p>';
+ const replay=[];
+ Object.entries(parts).forEach(([strategy,evs])=>Object.entries(evs||{}).forEach(([e,x])=>{
+  const source=strategy.startsWith('H09')?'H09':strategy.startsWith('MS')?'Multi-Symbol':'H01';
+  if(strategyFilter&&sourceMap[source]!==strategyFilter)return;
+  if(evidenceFilter&&e!==evidenceFilter&&!(evidenceFilter==='PAPER'&&e==='FROZEN_TRACKER'))return;
+  Object.entries(x.variants||{}).forEach(([name,v])=>replay.push(`<tr><td>${esc(strategy)}</td><td>${esc(e)}</td><td>${esc(name)}</td><td>${v.entries??0}</td><td>${pct(v.win_rate)}</td><td>${money(v.total_pnl_1_contract)}</td><td>${money(v.mean_pnl_1_contract)}</td><td>${money(v.max_drawdown_pnl)}</td><td>${v.winners_missed??0}</td><td>${v.losers_avoided??0}</td></tr>`));
+ }));
+ q('or-delayed-entry').innerHTML=replay.length?table(['Estrategia','Evidencia','Entrada','Trades','Win rate','P&L 1c','P&L/trade','Máx DD','Ganadores perdidos','Perdedores evitados'],replay):'<p class="muted">Sin replay disponible.</p>';
+}
+
 function render(){
  if(!payload)return;
  const strategies=visibleStrategies(),signals=visibleSignals();
@@ -150,6 +173,7 @@ function render(){
  renderMetaLive();
  renderMetaAlpaca();
  renderOperationalFlow();
+ renderSlFirstRecovery();
  q('or-strategies').innerHTML=table(['Estrategia','Fuente','Evidencia','Lado','Episodios/entradas','Cerradas','Abiertas','Win rate','Retorno medio','TP10 antes SL10','P&L total','P&L/entrada','MFE $/entrada','MAE $/entrada','Máx DD','Base'],strategies.map(r=>`<tr>${[
   r.strategy,r.source,r.evidence,r.side,r.episodes??r.entries,r.closed,r.open
  ].map(v=>`<td>${esc(v)}</td>`).join('')}<td>${pct(r.win_rate)}</td><td>${ret(r.mean_return)}</td><td>${pct(r.tp10_before_sl10_rate)}</td><td>${money(r.pnl)}</td><td>${money(r.mean_pnl)}</td><td>${money(r.mean_mfe_pnl)}</td><td>${money(r.mean_mae_pnl)}</td><td>${money(r.max_drawdown_pnl)}</td><td>${esc((r.pnl_basis||'—')+(r.pnl_n!=null?' · n='+r.pnl_n:''))}</td></tr>`));
