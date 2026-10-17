@@ -508,6 +508,28 @@ def _sl_first_recovery_bundle(options_root):
     }
 
 
+def _h09b_dre_bundle(options_root):
+    a = Path(options_root) / "artifacts/intraday"
+    replay = _load(a / "H09B_DRE_REPLAY_V01.json", {})
+    live = _load(a / "H09B_DRE_LIVE_STATE_V01.json", {})
+    return {
+        "available": bool(replay or live),
+        "replay": {
+            "version": replay.get("version"), "mode": replay.get("mode"),
+            "policy": replay.get("policy") or {}, "aggregate": replay.get("aggregate") or {},
+            "by_day": replay.get("by_day") or [], "methodology": replay.get("methodology") or [],
+        },
+        "live": {
+            "version": live.get("version"), "policy_version": live.get("policy_version"), "mode": live.get("mode"),
+            "live_start_utc": live.get("live_start_utc"), "updated_at_utc": live.get("updated_at_utc"),
+            "broker_orders_enabled": bool(live.get("broker_orders_enabled")),
+            "auto_apply": bool(live.get("auto_apply")), "armed_count": len(live.get("armed") or {}),
+            "counters": live.get("counters") or {}, "recent_decisions": live.get("recent_decisions") or [],
+            "recent_entries": live.get("recent_entries") or [],
+        },
+    }
+
+
 def build_options_research(db_path, options_root, day=None):
     day = day or _today_ny()
     live = _normalize_live(options_root, day)
@@ -529,6 +551,7 @@ def build_options_research(db_path, options_root, day=None):
         "meta_live": _live_shadow_bundle(options_root, day),
         "meta_alpaca": _meta_alpaca_bundle(options_root),
         "sl_first_recovery": _sl_first_recovery_bundle(options_root),
+        "h09b_dre": _h09b_dre_bundle(options_root),
         "h09": {
             "discovery_cutoff": h09.get("discovery_cutoff"),
             "prospective_start_after": h09.get("prospective_start_after"),

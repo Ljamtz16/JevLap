@@ -37,6 +37,7 @@ function install(){
   </div>
   <div class="card" style="margin-bottom:20px"><h2>Resultados por estrategia <small>· discovery, prospectivo y paper separados</small></h2><div id="or-strategies" class="table"></div><p class="muted">PAPER local = métricas de la simulación ejecutada. SIM 1c = 1 contrato, entrada al ask y salida según el retorno terminal de la ventana indicada (H09 60m; Multi 30m), sin slippage, comisiones ni restricciones de cartera. MFE/MAE son la excursión favorable/adversa media en dólares; Máx DD es el drawdown de la secuencia de P&L de esa fila. n indica episodios con datos completos.</p></div>
   <div class="card" style="margin-bottom:20px"><h2>SL-FIRST RECOVERY <small>· ¿el SL10 es pérdida o pullback de entrada?</small></h2><p class="muted">Acumulado multi-sesión con reconstrucción temporal real del mismo contrato. Sólo episodios con horizonte completo entran en porcentajes y replay. SL→+10/+20/+30 sólo cuenta objetivos alcanzados después del primer -10%. Research/shadow: no modifica Meta Alpaca.</p><div id="or-sl-recovery" class="table"></div><details style="margin-top:12px"><summary><strong>Delayed Entry Replay</strong> · Original vs Touch10 vs Reclaim8 vs Rebound5</summary><div id="or-delayed-entry" class="table" style="margin-top:10px"></div><p class="muted">Todas las variantes salen al horizonte original para aislar el timing de entrada. La entrada usa ask contemporáneo y la salida/valoración usa bid.</p></details></div>
+  <div class="card" style="margin-bottom:20px;border-width:2px"><h2>H09B DRE v0.1 <small>· FROZEN SHADOW · BUY NOW / ARM / BLOCK</small></h2><p id="or-dre-status" class="muted"></p><div id="or-dre-aggregate" class="table"></div><details style="margin-top:12px"><summary><strong>Replay día por día</strong> · diagnóstico retrospectivo</summary><div id="or-dre-days" class="table" style="margin-top:10px"></div><p class="muted">Los thresholds se congelaron después de revisar datos hasta 2026-10-16; por tanto este replay NO es OOS. El primer prospectivo no contaminado comienza en la próxima sesión posterior a 2026-10-17. Sin órdenes de broker.</p></details></div>
   <div class="grid">
    <div class="card"><h2>Jev frente a Options Research</h2><div id="or-groups" class="table"></div></div>
    <div class="card"><h2>Resultados por confianza Jev</h2><div id="or-confidence" class="table"></div></div>
@@ -161,6 +162,17 @@ function renderSlFirstRecovery(){
  q('or-delayed-entry').innerHTML=replay.length?table(['Estrategia','Evidencia','Entrada','Trades','Win rate','P&L 1c','P&L/trade','Máx DD','Ganadores perdidos','Perdedores evitados'],replay):'<p class="muted">Sin replay disponible.</p>';
 }
 
+function renderH09bDre(){
+ const root=payload?.h09b_dre||{},replay=root.replay||{},live=root.live||{},policy=replay.policy||{},c=live.counters||{};
+ if(!q('or-dre-status'))return;
+ q('or-dre-status').textContent=root.available?`FROZEN ${policy.version||live.policy_version||'H09B_DRE_V01'} · <=${policy.buy_now_max_spread_pct==null?'—':(policy.buy_now_max_spread_pct*100).toFixed(2)+'%'} BUY NOW · <=${policy.arm_touch10_max_spread_pct==null?'—':(policy.arm_touch10_max_spread_pct*100).toFixed(2)+'%'} ARM TOUCH10 · mayor BLOCK · live ${live.mode||'—'} · broker ${live.broker_orders_enabled?'ON':'OFF'} · señales ${c.signals_seen||0} / BUY ${c.buy_now||0} / ARM ${c.armed||0} / BLOCK ${c.blocked||0} / arm entries ${c.arm_entries||0}`:'DRE aún sin estado.';
+ const agg=replay.aggregate||{};
+ const rows=['DISCOVERY','PROSPECTIVE'].filter(e=>agg[e]).map(e=>{const x=agg[e],o=x.original||{},g=x.gate_spread_le_075||{},d=x.dre_touch10||{},r=x.dre_rebound5_shadow||{};return `<tr><td>${e}</td><td>${o.trades??0}</td><td>${money(o.total_pnl_1_contract)}</td><td>${money(o.max_drawdown_pnl)}</td><td>${g.trades??0}</td><td>${money(g.total_pnl_1_contract)}</td><td>${d.trades??0}</td><td>${pct(d.win_rate)}</td><td>${money(d.total_pnl_1_contract)}</td><td>${money(d.max_drawdown_pnl)}</td><td>${money(r.total_pnl_1_contract)}</td></tr>`});
+ q('or-dre-aggregate').innerHTML=rows.length?table(['Evidencia','Original n','Original P&L','Original DD','Gate<=0.75 n','Gate P&L','DRE n','DRE WR','DRE Touch10 P&L','DRE DD','Rebound5 shadow'],rows):'<p class="muted">Sin replay DRE.</p>';
+ const days=(replay.by_day||[]).map(x=>`<tr><td>${esc(x.day)}</td><td>${esc(x.evidence)}</td><td>${x.signals??0}</td><td>${x.decision_counts?.BUY_NOW??0}</td><td>${x.decision_counts?.ARM_TOUCH10??0}</td><td>${x.decision_counts?.BLOCK??0}</td><td>${money(x.original?.total_pnl_1_contract)}</td><td>${money(x.gate_spread_le_075?.total_pnl_1_contract)}</td><td>${money(x.dre_touch10?.total_pnl_1_contract)}</td><td>${money(x.dre_touch10?.max_drawdown_pnl)}</td></tr>`);
+ q('or-dre-days').innerHTML=days.length?table(['Día','Evidencia','Señales','BUY','ARM','BLOCK','Original','Gate<=0.75','DRE Touch10','DRE DD'],days):'<p class="muted">Sin días simulados.</p>';
+}
+
 function render(){
  if(!payload)return;
  const strategies=visibleStrategies(),signals=visibleSignals();
@@ -174,6 +186,7 @@ function render(){
  renderMetaAlpaca();
  renderOperationalFlow();
  renderSlFirstRecovery();
+ renderH09bDre();
  q('or-strategies').innerHTML=table(['Estrategia','Fuente','Evidencia','Lado','Episodios/entradas','Cerradas','Abiertas','Win rate','Retorno medio','TP10 antes SL10','P&L total','P&L/entrada','MFE $/entrada','MAE $/entrada','Máx DD','Base'],strategies.map(r=>`<tr>${[
   r.strategy,r.source,r.evidence,r.side,r.episodes??r.entries,r.closed,r.open
  ].map(v=>`<td>${esc(v)}</td>`).join('')}<td>${pct(r.win_rate)}</td><td>${ret(r.mean_return)}</td><td>${pct(r.tp10_before_sl10_rate)}</td><td>${money(r.pnl)}</td><td>${money(r.mean_pnl)}</td><td>${money(r.mean_mfe_pnl)}</td><td>${money(r.mean_mae_pnl)}</td><td>${money(r.max_drawdown_pnl)}</td><td>${esc((r.pnl_basis||'—')+(r.pnl_n!=null?' · n='+r.pnl_n:''))}</td></tr>`));

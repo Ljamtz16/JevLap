@@ -4,7 +4,7 @@ from pathlib import Path
 class OptionsResearchUITests(unittest.TestCase):
     def test_readonly_tab_has_required_sections(self):
         text=Path('web/options-research.js').read_text(encoding='utf-8')
-        for phrase in ('Options Research','META LIVE','TTT / Hysteresis','META ALPACA','Broker equity','Options BP','Daily halt','Posición actual','Último trade','ACCEPT / WAIT / BLOCK','Resultados por estrategia','Jev frente a Options Research','Resultados por activo','Coincidencias por señal','H09 PUT','Resultados por confianza Jev','/api/options-research','broker actions OFF','Cadena operativa','Ver todas las decisiones Meta','Ver todos los episodios TTT','historial detallado','P&L total','P&L/entrada','MFE $/entrada','MAE $/entrada','Máx DD','Base','SL-FIRST RECOVERY','Delayed Entry Replay','SL→+10','Rebound5'):
+        for phrase in ('Options Research','META LIVE','TTT / Hysteresis','META ALPACA','Broker equity','Options BP','Daily halt','Posición actual','Último trade','ACCEPT / WAIT / BLOCK','Resultados por estrategia','Jev frente a Options Research','Resultados por activo','Coincidencias por señal','H09 PUT','Resultados por confianza Jev','/api/options-research','broker actions OFF','Cadena operativa','Ver todas las decisiones Meta','Ver todos los episodios TTT','historial detallado','P&L total','P&L/entrada','MFE $/entrada','MAE $/entrada','Máx DD','Base','SL-FIRST RECOVERY','Delayed Entry Replay','SL→+10','Rebound5','H09B DRE v0.1','Replay día por día','DRE Touch10 P&L'):
             self.assertIn(phrase,text)
         self.assertNotIn('Ejecutar',text)
         self.assertLess(text.index('META ALPACA'),text.index('META LIVE'))
